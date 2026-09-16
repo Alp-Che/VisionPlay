@@ -22,7 +22,11 @@ def load(name):
         return _cache[name]
 
     path = os.path.join(ASSETS_DIR, name)
-    img = cv2.imread(path, cv2.IMREAD_UNCHANGED) if os.path.exists(path) else None
+    if os.path.exists(path):
+        data = np.fromfile(path, dtype=np.uint8)
+        img = cv2.imdecode(data, cv2.IMREAD_UNCHANGED)
+    else:
+        img = None
 
     if img is not None and img.ndim == 3 and img.shape[2] == 3:
         alpha = np.full(img.shape[:2], 255, dtype=np.uint8)

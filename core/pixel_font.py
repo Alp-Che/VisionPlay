@@ -22,6 +22,12 @@ import numpy as np
 
 from core.paths import resource
 
+
+def _imread_unicode(path, flags=cv2.IMREAD_UNCHANGED):
+    """cv2.imread that works with non-ASCII paths on Windows."""
+    data = np.fromfile(path, dtype=np.uint8)
+    return cv2.imdecode(data, flags)
+
 FONT_DIR = resource("assets", "font")
 SHEET_PATH = os.path.join(FONT_DIR, "genel.png")
 
@@ -67,7 +73,7 @@ def _load_info_glyphs():
         if not filename.endswith(".png") or filename == "genel.png":
             continue
         name = filename[:-4]
-        img = cv2.imread(os.path.join(FONT_DIR, filename), cv2.IMREAD_UNCHANGED)
+        img = _imread_unicode(os.path.join(FONT_DIR, filename))
         if img is None:
             continue
         if img.ndim == 3 and img.shape[2] == 4:
@@ -141,7 +147,7 @@ def _load_sheet_glyphs():
     never descend, so a midpoint band would reach far enough up to swallow
     the cedilla of the row above: Ç's tail landed inside İ, Ş's inside Z.
     """
-    img = cv2.imread(SHEET_PATH, cv2.IMREAD_UNCHANGED)
+    img = _imread_unicode(SHEET_PATH)
     if img is None:
         return {}
     alpha = img[:, :, 3]
