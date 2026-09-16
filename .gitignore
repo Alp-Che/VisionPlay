@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# sanal ortam
+venv/
+.venv/
+
+# PyInstaller ciktilari
+build/
+dist/
+
+# MediaPipe model dosyalari: setup_models.py ile indiriliyor
+models/
+
+# macOS
+.DS_Store
