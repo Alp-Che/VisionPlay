@@ -19,6 +19,8 @@ Butun arayuz el ile kullaniliyor: bir butonun uzerine parmak ucunuzu getirip
 
 ## Kurulum
 
+**macOS / Linux**
+
 ```bash
 python3 -m venv venv
 source venv/bin/activate
@@ -26,8 +28,20 @@ pip install -r requirements.txt
 python setup_models.py
 ```
 
+**Windows** (PowerShell)
+
+```powershell
+py -m venv venv
+venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python setup_models.py
+```
+
+PowerShell betik calistirmayi engellerse, `venv\Scripts\activate.bat` dosyasini
+normal komut isteminde (cmd) calistirin.
+
 `setup_models.py`, MediaPipe'in el takibi modelini `models/` klasorune indirir.
-Model dosyasi depoya dahil degildir.
+Model dosyasi depoya dahil degildir, bu adim atlanirsa oyun acilmaz.
 
 ## Calistirma
 
@@ -35,7 +49,14 @@ Model dosyasi depoya dahil degildir.
 python main.py
 ```
 
-Ilk calistirmada macOS kamera izni ister.
+Sanal ortamin etkin oldugundan emin olun (komut satirinin basinda `(venv)`
+yaziyor olmali).
+
+Ilk calistirmada isletim sistemi kamera izni ister. Windows'ta izin
+**Ayarlar > Gizlilik ve guvenlik > Kamera** altindadir; "Masaustu uygulamalarinin
+kameraniza erismesine izin verin" acik olmalidir.
+
+Cikmak icin `q` tusuna basin.
 
 ## macOS uygulamasi olarak paketleme
 
@@ -46,6 +67,9 @@ pyinstaller VisionPlay.spec --noconfirm
 
 Sonuc: `dist/VisionPlay.app`
 
+Bu tarif yalnizca macOS icindir: `.icns` ikon ve `BUNDLE` adimi macOS'a ozgudur.
+Windows'ta oyun kaynaktan `python main.py` ile calistirilir.
+
 ## Proje yapisi
 
 - `core/` — kamera, el takibi, geometri, piksel yazi tipi, ortak arayuz parcalari
@@ -55,4 +79,7 @@ Sonuc: `dist/VisionPlay.app`
 
 ## Gereksinimler
 
-Python 3.11+, bir web kamerasi ve iyi isik. macOS uzerinde gelistirildi.
+Python 3.11+, bir web kamerasi ve iyi isik.
+
+macOS uzerinde gelistirildi; Windows'ta kaynaktan calisir. Kamera acilisi
+Windows'ta DirectShow arka ucu uzerinden yapilir, ayrica bir sey gerekmez.

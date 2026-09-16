@@ -9,15 +9,28 @@ handing the game the newest frame keeps the picture current.
 Exposes the few VideoCapture methods the game uses, so modes keep calling
 cap.read() exactly as before.
 """
+import sys
 import threading
 import time
 
 import cv2
 
 
+def _open_capture(index):
+    """Windows' default Media Foundation backend can take several seconds to
+    open a webcam and often ignores the requested resolution; DirectShow does
+    neither. On every other platform the default backend is the right one."""
+    if sys.platform == "win32":
+        cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+        if cap.isOpened():
+            return cap
+        cap.release()
+    return cv2.VideoCapture(index)
+
+
 class CameraStream:
     def __init__(self, index=0, width=1280, height=720, fps=60):
-        self._cap = cv2.VideoCapture(index)
+        self._cap = _open_capture(index)
         if self._cap.isOpened():
             self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
             self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
