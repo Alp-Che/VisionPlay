@@ -15,3 +15,12 @@ models/
 
 # macOS
 .DS_Store
+
+# yapay zeka araclarinin birakabilecegi yerel dosyalar
+.claude/
+CLAUDE.md
+.mcp.json
+.cursor/
+.cursorrules
+.aider*
+.github/copilot-instructions.md
