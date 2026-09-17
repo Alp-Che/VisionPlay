@@ -1,11 +1,14 @@
 """Fruit Ninja.
 
-A single sword hangs off the player's hand -- the right one, or the left if
-the right isn't in frame -- pointing the way that hand points and sized by its
-span, so it shrinks along with the player as they move back from the camera.
-The whole cutting edge slices on contact, and the area the edge swept since
-the previous frame counts too, so a fast swing cannot pass straight through a
-fruit between frames.
+Cut with your index fingertip. A fingertip is a point rather than a blade, so
+two things make up for the reach a sword had: the path the tip swept since the
+previous frame is what gets tested, so a fast flick cannot pass clean through a
+fruit between frames, and a tip moving too slowly does not cut at all --
+without that, holding a finger still in the fruits' path would harvest them.
+
+Only one finger cuts. Which hand it belongs to is decided once and then kept
+for as long as that hand is tracked: letting the cut point change hands would
+sweep a slash right across the screen and take everything on the way.
 """
 import math
 import random
@@ -13,30 +16,19 @@ import time
 
 import cv2
 
-from core import assets
-from core.hand_tracker import HandTracker, hand_angle, hand_foreshorten, hand_span
+from core.hand_tracker import HandTracker, hand_span
+from core.paddles import HandPaddles
 from core.pixel_font import draw_text_with_background
-from core.transform import integer_scale_for, place_rotated
 from core.ui import Button, DwellClickController
 
 TOOLBAR_H = 90
 
-# sword.png is 13x58 and drawn point-up: blade tip at the very top, crossguard
-# at y=45-48, handle below it. Anchored at the handle so the fist holds it.
-SWORD_GRIP_FRAC = (0.5, 0.922)
-SWORD_TIP_FRAC = (0.5, 0.009)
-# place_rotated aligns the sprite's +x axis with the angle it is given, but
-# this blade points up (local -y), so it is turned a quarter turn further.
-SWORD_ANGLE_OFFSET = math.pi / 2
-
-SWORD_PER_HAND = 4.6      # whole sprite height, in hand spans
-# The cutting edge runs from just above the crossguard to the tip, measured
-# out from the grip as a fraction of the sprite's height. The whole edge
-# cuts, not only the point.
-EDGE_NEAR_FRAC = SWORD_GRIP_FRAC[1] - 0.776
-EDGE_FAR_FRAC = SWORD_GRIP_FRAC[1] - SWORD_TIP_FRAC[1]
-EDGE_SAMPLES = 6
-SQUASH_SMOOTHING = 0.35   # blends the depth estimate, ~3 frames to settle
+# A little forgiveness around the tip, measured in hand spans so it shrinks
+# with the player as they step back -- the same way everything else here does.
+FINGER_RADIUS_PER_HAND = 0.12
+# Below this the tip is resting, not cutting. Without it a finger parked in
+# the fruits' path would score off every one that fell onto it.
+MIN_SWIPE_FRAC = 0.30     # of frame height per second
 
 GRAVITY = 900.0           # px/s^2
 SPAWN_EVERY = (0.7, 1.6)  # seconds between throws
@@ -143,7 +135,10 @@ def run_ninja_mode(cap, window_name):
     """Returns 'menu' or 'quit'."""
     tracker = HandTracker(num_hands=2)
     dwell = DwellClickController(dwell_seconds=2.0)
-    sword_img = assets.load("sword.png")
+    # landmark 8 is the index fingertip. coast is left on: tracking gives out
+    # exactly when a hand is swung hardest, and a cut already under way should
+    # carry through rather than stop dead.
+    finger_tracker = HandPaddles(1.0, 1.0, landmark=8)
 
     ret, frame = cap.read()
     if not ret:
@@ -154,11 +149,10 @@ def run_ninja_mode(cap, window_name):
     buttons = [Button("menu", "MENÜ", 10, 10, 100, TOOLBAR_H - 20, color=(38, 38, 38))]
 
     fruits, halves = [], []
-    trail = []           # recent blade-tip positions, for the swoosh
-    last_edge = None     # where the edge was last frame
+    trail = []           # recent fingertip positions, for the swoosh
+    active_id = None     # the hand whose finger is doing the cutting
     hand_px = 45.0
-    squash = 1.0         # smoothed, so a jittery depth estimate can't make
-    score, missed = 0, 0  # the blade pulse while the hand is held still
+    score, missed = 0, 0
     message, message_until = "", 0.0
     flash_until = 0.0
     next_spawn = time.time() + 1.0
@@ -187,10 +181,9 @@ def run_ninja_mode(cap, window_name):
                 result = "menu"
                 break
 
-            sword_size = SWORD_PER_HAND * hand_px
-            if sword_img is not None:
-                sword_size = integer_scale_for(sword_img, sword_size) * max(sword_img.shape[:2])
             fruit_radius = FRUIT_RADIUS_PER_HAND * hand_px
+            finger_r = FINGER_RADIUS_PER_HAND * hand_px
+            min_swipe = MIN_SWIPE_FRAC * h
 
             # ---- spawn ----
             if now >= next_spawn:
@@ -198,44 +191,44 @@ def run_ninja_mode(cap, window_name):
                     fruits.append(_spawn_fruit(w, h, fruit_radius))
                 next_spawn = now + random.uniform(*SPAWN_EVERY)
 
-            # ---- one sword: the right hand carries it, the left only if the
-            # right isn't in frame, so a left-hander can just drop it out ----
-            sword_hand = next((hd for hd in hands if hd.label == "Right"), None)
-            if sword_hand is None:
-                sword_hand = next((hd for hd in hands if hd.label == "Left"), None)
-
-            blade = None
-            if sword_hand is not None:
-                angle = hand_angle(sword_hand)
-                grip = sword_hand.landmarks_px[9]
-                # point the hand at the lens and the blade all but disappears,
-                # so the drawn length and the cutting edge both collapse with it
-                squash += (hand_foreshorten(sword_hand) - squash) * SQUASH_SMOOTHING
-                near = EDGE_NEAR_FRAC * sword_size * squash
-                far = EDGE_FAR_FRAC * sword_size * squash
-                step = (math.cos(angle), math.sin(angle))
-                edge = [(int(grip[0] + step[0] * d), int(grip[1] + step[1] * d))
-                        for d in (near + (far - near) * i / (EDGE_SAMPLES - 1)
-                                  for i in range(EDGE_SAMPLES))]
-                blade = (grip, angle, edge, squash)
-
-            # ---- slicing: the whole edge cuts, and the path it swept since
-            # the last frame counts too so fast swings can't pass through ----
-            if blade is None:
-                trail.clear()
-                last_edge = None
+            # ---- pick the cutting finger: whichever hand is being swung.
+            # It cannot simply be pinned to the first hand seen -- a hand left
+            # resting in frame would hold on to it and the hand actually
+            # swinging would cut nothing. Handing it over only to a clearly
+            # faster hand stops it flickering while both move together. Each
+            # hand carries its own swept path, so a handover cuts only where
+            # the new finger has been, never a line drawn between the two. ----
+            tips = {p.id: p for p in finger_tracker.update(hands, now, dt)}
+            previous_id = active_id
+            if not tips:
+                active_id = None
+            elif active_id not in tips:
+                active_id = max(tips, key=lambda i: math.hypot(*tips[i].velocity))
             else:
-                _grip, angle, edge, _squash = blade
-                trail.append(edge[-1])
+                quickest = max(tips, key=lambda i: math.hypot(*tips[i].velocity))
+                held = math.hypot(*tips[active_id].velocity)
+                if math.hypot(*tips[quickest].velocity) > max(held * 1.5, min_swipe):
+                    active_id = quickest
+            if active_id != previous_id:
+                trail.clear()
+            finger = tips.get(active_id)
+
+            # ---- slicing: the tip's path since the last frame is the blade,
+            # so a fast flick can't skip over a fruit between frames ----
+            if finger is None:
+                trail.clear()
+            else:
+                trail.append((int(finger.end[0]), int(finger.end[1])))
                 del trail[:-TRAIL_LENGTH]
 
-                for fruit in fruits[:]:
-                    center, radius = (fruit["x"], fruit["y"]), fruit["r"]
-                    hit = _segment_hits_circle(edge[0], edge[-1], center, radius)
-                    if not hit and last_edge is not None:
-                        hit = any(_segment_hits_circle(last_edge[i], edge[i], center, radius)
-                                  for i in range(EDGE_SAMPLES))
-                    if hit:
+                speed = math.hypot(*finger.velocity)
+                if speed >= min_swipe:
+                    angle = math.atan2(finger.velocity[1], finger.velocity[0])
+                    for fruit in fruits[:]:
+                        center = (fruit["x"], fruit["y"])
+                        if not _segment_hits_circle(finger.start, finger.end,
+                                                    center, fruit["r"] + finger_r):
+                            continue
                         fruits.remove(fruit)
                         halves.extend(_split(fruit, angle))
                         if fruit.get("bomb"):
@@ -244,8 +237,6 @@ def run_ninja_mode(cap, window_name):
                             flash_until = now + 0.18
                         else:
                             score += 1
-
-                last_edge = edge
 
             # ---- physics ----
             for item in fruits + halves:
@@ -274,13 +265,14 @@ def run_ninja_mode(cap, window_name):
                 cv2.line(frame, trail[i - 1], trail[i], (shade, shade, shade),
                          max(1, int(1 + 4 * fade)), cv2.LINE_AA)
 
-            if blade is not None:
-                grip, angle, edge, squash = blade
-                if sword_img is not None:
-                    place_rotated(frame, sword_img, grip, angle + SWORD_ANGLE_OFFSET,
-                                  sword_size, pivot=SWORD_GRIP_FRAC, squash=squash)
-                else:
-                    cv2.line(frame, edge[0], edge[-1], (220, 220, 220), 6, cv2.LINE_AA)
+            if finger is not None:
+                # the tip itself, so the player can see exactly what cuts, and
+                # a ring around it marking the forgiveness it actually gets
+                tip = (int(finger.end[0]), int(finger.end[1]))
+                cv2.circle(frame, tip, max(3, int(finger_r)),
+                           (255, 255, 255), -1, cv2.LINE_AA)
+                cv2.circle(frame, tip, max(6, int(finger_r) + 4),
+                           (120, 200, 255), 2, cv2.LINE_AA)
 
             for btn in buttons:
                 btn.draw(frame, progress=progress_map.get(btn.id, 0.0),
@@ -295,7 +287,7 @@ def run_ninja_mode(cap, window_name):
             if now < message_until:
                 draw_text_with_background(frame, message, (w // 2, 96), scale=3,
                                           anchor="center", bg_color=(0, 0, 130))
-            draw_text_with_background(frame, "ELİNİ SALLA, MEYVELERİ KES",
+            draw_text_with_background(frame, "İŞARET PARMAĞINLA KES",
                                       (14, h - 44), scale=2, color=(200, 200, 200))
 
             cv2.imshow(window_name, frame)

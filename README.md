@@ -12,7 +12,7 @@ Butun arayuz el ile kullaniliyor: bir butonun uzerine parmak ucunuzu getirip
 |---|---|
 | **OKCULUK** | Bir el yayi tutar, diger el yumruk yapinca ok olusur; oku yaya yaklastirip geri cekin ve birakin. Hedef asagi yukari hareket eder. |
 | **CIZIM** | Parmak ucunuzla havaya cizin. |
-| **FRUIT NINJA** | Elinizdeki kilicla meyveleri kesin, bombalara dokunmayin. |
+| **FRUIT NINJA** | Isaret parmaginizla meyveleri kesin, bombalara dokunmayin. |
 | **TOP SEKTIRME** | Topu elinizle havada tutun, yere dusurmeyin. |
 | **YAKALA** | Iki elinizin arasindaki sepetle dusen cisimleri toplayin; siyah olanlar puan goturur. |
 | **KOSTEBEK** | Alttan cikan kostebekleri elinizle geri sokun, kotu olanlara vurmayin. |

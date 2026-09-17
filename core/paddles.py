@@ -84,7 +84,11 @@ def _match(centers, positions, limit):
 class HandPaddles:
     def __init__(self, radius_per_span, radius_floor,
                  grace=GRACE_SECONDS, damping=GRACE_DAMPING, coast=True,
-                 max_hands=2):
+                 max_hands=2, landmark=9):
+        # which of the hand's 21 points to follow. 9 is the middle-finger
+        # knuckle, near enough the centre of the palm to stand for the whole
+        # hand; 8 is the index fingertip, for games played with one finger.
+        self.landmark = landmark
         self.radius_per_span = radius_per_span
         self.radius_floor = radius_floor
         self.grace = grace
@@ -102,7 +106,7 @@ class HandPaddles:
         self._next_id = 0
 
     def update(self, hands, now, dt):
-        centers = [hand.landmarks_px[9] for hand in hands]
+        centers = [hand.landmarks_px[self.landmark] for hand in hands]
         ids = list(self._state.keys())
         positions = [self._state[i]["end"] for i in ids]
         limit = MAX_HAND_SPEED * max(dt, 1e-3)
