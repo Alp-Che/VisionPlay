@@ -2,7 +2,7 @@
 
 Akis: BASLA -> mod secimi -> OKCULUK / CIZIM / FRUIT NINJA / TOP SEKTIRME / YAKALA / KOSTEBEK.
 
-Butonlar: elinizi butonun uzerine getirip yumruk yaparak 2 saniye bekleyin.
+Butonlar: elinizi butonun uzerine getirip yumruk yaparak 1 saniye bekleyin.
 """
 import sys
 

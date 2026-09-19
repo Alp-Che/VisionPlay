@@ -67,11 +67,17 @@ class Button:
             remaining -= length
 
 
+# How long a fist must be held to count as a click. Long enough that a hand
+# passing over a button doesn't press it, short enough not to be a chore --
+# every screen takes it from here, so this is the only line to change.
+DWELL_SECONDS = 1.0
+
+
 class DwellClickController:
     """Fires a click when a hand's index fingertip hovers a button AND the
     hand stays closed (fist) continuously for `dwell_seconds`."""
 
-    def __init__(self, dwell_seconds=2.0):
+    def __init__(self, dwell_seconds=DWELL_SECONDS):
         self.dwell_seconds = dwell_seconds
         self._target_id = None
         self._start_time = None

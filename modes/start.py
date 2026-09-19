@@ -11,7 +11,7 @@ from core.ui import Button, DwellClickController
 def run_start(cap, window_name):
     """Returns 'menu' or 'quit'."""
     tracker = HandTracker(num_hands=2)
-    dwell = DwellClickController(dwell_seconds=2.0)
+    dwell = DwellClickController()
 
     ret, frame = cap.read()
     h, w = frame.shape[:2] if ret else (720, 1280)
@@ -48,7 +48,7 @@ def run_start(cap, window_name):
                 cv2.circle(frame, hand.index_tip, 10,
                            (0, 255, 0) if hand.closed else (0, 200, 255), -1)
 
-            draw_text(frame, "ELİNİ BUTONA GETİR, YUMRUK YAP VE 2 SANİYE BEKLE",
+            draw_text(frame, "ELİNİ BUTONA GETİR, YUMRUK YAP VE 1 SANİYE BEKLE",
                       (w // 2, h - 50), scale=2, color=(200, 200, 200), anchor="center")
 
             cv2.imshow(window_name, frame)

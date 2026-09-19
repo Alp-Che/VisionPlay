@@ -58,7 +58,7 @@ def _respawn(w, ball_r, near_x=None):
 def run_juggle_mode(cap, window_name):
     """Returns 'menu' or 'quit'."""
     tracker = HandTracker(num_hands=2)
-    dwell = DwellClickController(dwell_seconds=2.0)
+    dwell = DwellClickController()
     ball_img = assets.load("ball.png")
 
     ret, frame = cap.read()

@@ -11,7 +11,7 @@ from core.ui import Button, DwellClickController
 def run_menu(cap, window_name):
     """Returns a mode id ('archery', 'draw', ...), 'start' or 'quit'."""
     tracker = HandTracker(num_hands=2)
-    dwell = DwellClickController(dwell_seconds=2.0)
+    dwell = DwellClickController()
 
     ret, frame = cap.read()
     h, w = frame.shape[:2] if ret else (480, 640)
@@ -59,7 +59,7 @@ def run_menu(cap, window_name):
                                logo.shape[1] * zoom, logo.shape[0] * zoom)
             else:
                 draw_text(frame, "VisionPlay", (30, 30), scale=4)
-            draw_text(frame, "ELİNİ BİR MODA GETİR, YUMRUK YAP VE 2 SANİYE BEKLE",
+            draw_text(frame, "ELİNİ BİR MODA GETİR, YUMRUK YAP VE 1 SANİYE BEKLE",
                       (30, h - 50), scale=2, color=(200, 200, 200))
 
             for btn in all_buttons:

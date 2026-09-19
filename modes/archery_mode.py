@@ -159,7 +159,7 @@ class _StickyHand:
 def run_archery_mode(cap, window_name):
     """Returns 'menu' or 'quit'."""
     tracker = HandTracker(num_hands=2)
-    dwell = DwellClickController(dwell_seconds=2.0)
+    dwell = DwellClickController()
 
     ret, frame = cap.read()
     if not ret:

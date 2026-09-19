@@ -134,7 +134,7 @@ def _split(fruit, cut_angle):
 def run_ninja_mode(cap, window_name):
     """Returns 'menu' or 'quit'."""
     tracker = HandTracker(num_hands=2)
-    dwell = DwellClickController(dwell_seconds=2.0)
+    dwell = DwellClickController()
     # landmark 8 is the index fingertip. coast is left on: tracking gives out
     # exactly when a hand is swung hardest, and a cut already under way should
     # carry through rather than stop dead.

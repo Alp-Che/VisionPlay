@@ -4,7 +4,7 @@ Kamera ve el hareketleriyle oynanan mini oyunlar. Klavyeye veya fareye
 dokunmadan, 2-3 metre uzaktan oynanacak sekilde tasarlandi.
 
 Butun arayuz el ile kullaniliyor: bir butonun uzerine parmak ucunuzu getirip
-**yumrugunuzu 2 saniye kapali tutunca** tiklaniyor.
+**yumrugunuzu 1 saniye kapali tutunca** tiklaniyor.
 
 ## Modlar
 
