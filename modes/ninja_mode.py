@@ -6,9 +6,9 @@ previous frame is what gets tested, so a fast flick cannot pass clean through a
 fruit between frames, and a tip moving too slowly does not cut at all --
 without that, holding a finger still in the fruits' path would harvest them.
 
-Only one finger cuts. Which hand it belongs to is decided once and then kept
-for as long as that hand is tracked: letting the cut point change hands would
-sweep a slash right across the screen and take everything on the way.
+Both hands cut, each with its own swept path and its own trail. Nothing is
+shared between them, so one hand resting still cannot hold the other back and
+no slash is ever drawn between the two.
 """
 import math
 import random
@@ -149,8 +149,7 @@ def run_ninja_mode(cap, window_name):
     buttons = [Button("menu", "MENÜ", 10, 10, 100, TOOLBAR_H - 20, color=(38, 38, 38))]
 
     fruits, halves = [], []
-    trail = []           # recent fingertip positions, for the swoosh
-    active_id = None     # the hand whose finger is doing the cutting
+    trails = {}          # hand id -> recent fingertip positions, for the swoosh
     hand_px = 45.0
     score, missed = 0, 0
     message, message_until = "", 0.0
@@ -191,52 +190,39 @@ def run_ninja_mode(cap, window_name):
                     fruits.append(_spawn_fruit(w, h, fruit_radius))
                 next_spawn = now + random.uniform(*SPAWN_EVERY)
 
-            # ---- pick the cutting finger: whichever hand is being swung.
-            # It cannot simply be pinned to the first hand seen -- a hand left
-            # resting in frame would hold on to it and the hand actually
-            # swinging would cut nothing. Handing it over only to a clearly
-            # faster hand stops it flickering while both move together. Each
-            # hand carries its own swept path, so a handover cuts only where
-            # the new finger has been, never a line drawn between the two. ----
-            tips = {p.id: p for p in finger_tracker.update(hands, now, dt)}
-            previous_id = active_id
-            if not tips:
-                active_id = None
-            elif active_id not in tips:
-                active_id = max(tips, key=lambda i: math.hypot(*tips[i].velocity))
-            else:
-                quickest = max(tips, key=lambda i: math.hypot(*tips[i].velocity))
-                held = math.hypot(*tips[active_id].velocity)
-                if math.hypot(*tips[quickest].velocity) > max(held * 1.5, min_swipe):
-                    active_id = quickest
-            if active_id != previous_id:
-                trail.clear()
-            finger = tips.get(active_id)
+            tips = finger_tracker.update(hands, now, dt)
 
-            # ---- slicing: the tip's path since the last frame is the blade,
-            # so a fast flick can't skip over a fruit between frames ----
-            if finger is None:
-                trail.clear()
-            else:
-                trail.append((int(finger.end[0]), int(finger.end[1])))
-                del trail[:-TRAIL_LENGTH]
+            # a trail each: sharing one would draw a line from one hand to
+            # the other every time they took turns
+            live = {tip.id for tip in tips}
+            for stale in [i for i in trails if i not in live]:
+                del trails[stale]
+            for tip in tips:
+                path = trails.setdefault(tip.id, [])
+                path.append((int(tip.end[0]), int(tip.end[1])))
+                del path[:-TRAIL_LENGTH]
 
-                speed = math.hypot(*finger.velocity)
-                if speed >= min_swipe:
-                    angle = math.atan2(finger.velocity[1], finger.velocity[0])
-                    for fruit in fruits[:]:
-                        center = (fruit["x"], fruit["y"])
-                        if not _segment_hits_circle(finger.start, finger.end,
-                                                    center, fruit["r"] + finger_r):
-                            continue
-                        fruits.remove(fruit)
-                        halves.extend(_split(fruit, angle))
-                        if fruit.get("bomb"):
-                            score += BOMB_POINTS
-                            message, message_until = "BOMBA!", now + 1.2
-                            flash_until = now + 0.18
-                        else:
-                            score += 1
+            # ---- slicing: the path a tip swept since the last frame is the
+            # blade, so a fast flick can't skip over a fruit between frames.
+            # Each hand is tested on its own, and a fruit leaves the list the
+            # moment it is cut, so two fingers crossing it cannot score twice.
+            for tip in tips:
+                if math.hypot(*tip.velocity) < min_swipe:
+                    continue
+                angle = math.atan2(tip.velocity[1], tip.velocity[0])
+                for fruit in fruits[:]:
+                    center = (fruit["x"], fruit["y"])
+                    if not _segment_hits_circle(tip.start, tip.end,
+                                                center, fruit["r"] + finger_r):
+                        continue
+                    fruits.remove(fruit)
+                    halves.extend(_split(fruit, angle))
+                    if fruit.get("bomb"):
+                        score += BOMB_POINTS
+                        message, message_until = "BOMBA!", now + 1.2
+                        flash_until = now + 0.18
+                    else:
+                        score += 1
 
             # ---- physics ----
             for item in fruits + halves:
@@ -259,19 +245,20 @@ def run_ninja_mode(cap, window_name):
             for fruit in fruits:
                 _draw_fruit(frame, fruit)
 
-            for i in range(1, len(trail)):
-                fade = i / len(trail)
-                shade = int(90 + 165 * fade)
-                cv2.line(frame, trail[i - 1], trail[i], (shade, shade, shade),
-                         max(1, int(1 + 4 * fade)), cv2.LINE_AA)
+            for path in trails.values():
+                for i in range(1, len(path)):
+                    fade = i / len(path)
+                    shade = int(90 + 165 * fade)
+                    cv2.line(frame, path[i - 1], path[i], (shade, shade, shade),
+                             max(1, int(1 + 4 * fade)), cv2.LINE_AA)
 
-            if finger is not None:
+            for tip in tips:
                 # the tip itself, so the player can see exactly what cuts, and
                 # a ring around it marking the forgiveness it actually gets
-                tip = (int(finger.end[0]), int(finger.end[1]))
-                cv2.circle(frame, tip, max(3, int(finger_r)),
+                point = (int(tip.end[0]), int(tip.end[1]))
+                cv2.circle(frame, point, max(3, int(finger_r)),
                            (255, 255, 255), -1, cv2.LINE_AA)
-                cv2.circle(frame, tip, max(6, int(finger_r) + 4),
+                cv2.circle(frame, point, max(6, int(finger_r) + 4),
                            (120, 200, 255), 2, cv2.LINE_AA)
 
             for btn in buttons:
@@ -287,7 +274,7 @@ def run_ninja_mode(cap, window_name):
             if now < message_until:
                 draw_text_with_background(frame, message, (w // 2, 96), scale=3,
                                           anchor="center", bg_color=(0, 0, 130))
-            draw_text_with_background(frame, "İŞARET PARMAĞINLA KES",
+            draw_text_with_background(frame, "İKİ İŞARET PARMAĞINLA DA KESEBİLİRSİN",
                                       (14, h - 44), scale=2, color=(200, 200, 200))
 
             cv2.imshow(window_name, frame)
