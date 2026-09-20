@@ -18,32 +18,6 @@ def hand_span(hand):
     return math.hypot(bx - ax, by - ay)
 
 
-def hand_angle(hand):
-    """Direction the hand points, wrist through knuckles, as an angle in the
-    usual atan2(dy, dx) image convention."""
-    (ax, ay), (bx, by) = hand.landmarks_px[0], hand.landmarks_px[9]
-    return math.atan2(by - ay, bx - ax)
-
-
-def hand_foreshorten(hand):
-    """How much of the hand's length actually faces the camera, 0..1.
-
-    1.0 means the hand lies flat across the view; near 0 means it is pointing
-    straight at (or away from) the lens, where anything held in it should
-    collapse to almost nothing on screen. Uses the metric 3D landmarks, so it
-    is the true out-of-plane tilt rather than a guess from the flat picture.
-    """
-    world = hand.world_landmarks
-    if not world:
-        return 1.0
-    wrist, knuckle = world[0], world[9]
-    dx, dy, dz = knuckle.x - wrist.x, knuckle.y - wrist.y, knuckle.z - wrist.z
-    full = math.sqrt(dx * dx + dy * dy + dz * dz)
-    if full < 1e-6:
-        return 1.0
-    return min(1.0, math.hypot(dx, dy) / full)
-
-
 class TrackedHand:
     def __init__(self, label, landmarks_norm, w, h, world_landmarks=None):
         self.label = label  # "Left" or "Right", mirrored/selfie convention

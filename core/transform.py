@@ -14,7 +14,7 @@ def integer_scale_for(icon_bgra, target_size):
     return max(1, round(target_size / max(icon_bgra.shape[:2])))
 
 
-def scale_and_rotate(icon_bgra, target_size, angle_rad, pivot=(0.5, 0.5), squash=1.0):
+def scale_and_rotate(icon_bgra, target_size, angle_rad, pivot=(0.5, 0.5)):
     """Upscales icon_bgra (nearest-neighbor, keeps pixel-art edges crisp) so
     its larger side equals target_size, rotates it by angle_rad around
     `pivot` (a fraction of the ORIGINAL sprite's width/height), and returns
@@ -24,20 +24,16 @@ def scale_and_rotate(icon_bgra, target_size, angle_rad, pivot=(0.5, 0.5), squash
     angle_rad is measured in image coordinates (x right, y down): rotating
     the local vector (1, 0) by angle_rad=pi/2 points it to local (0, 1),
     i.e. straight down on screen.
-
-    `squash` compresses the sprite along its own y axis only, leaving the
-    width alone -- that is what foreshortening looks like when an object is
-    turned towards the camera, rather than it simply getting smaller.
     """
     ih, iw = icon_bgra.shape[:2]
     zoom = integer_scale_for(icon_bgra, target_size)
     nw = iw * zoom
-    nh = max(1, int(round(ih * zoom * squash)))
+    nh = ih * zoom
     upscaled = cv2.resize(icon_bgra, (nw, nh), interpolation=cv2.INTER_NEAREST)
 
     # Rotate about the sprite's own centre so the canvas only has to hold the
     # sprite's diagonal. Padding out to the pivot instead makes it far bigger
-    # -- for a sword gripped at the hilt it more than triples the area warped
+    # -- for a sprite gripped at one end it more than triples the area warped
     # every frame -- and the pivot is recovered from the matrix below anyway.
     diag = int(np.ceil(math.hypot(nw, nh))) + 2
     canvas = np.zeros((diag, diag, 4), dtype=np.uint8)
@@ -73,9 +69,8 @@ def paste_alpha(frame, img_bgra, x, y):
     frame[y0:y1, x0:x1] = (roi * (1 - alpha) + fg * alpha).astype(np.uint8)
 
 
-def place_rotated(frame, icon_bgra, anchor_xy, angle_rad, target_size, pivot=(0.5, 0.5),
-                  squash=1.0):
+def place_rotated(frame, icon_bgra, anchor_xy, angle_rad, target_size, pivot=(0.5, 0.5)):
     """Scales icon_bgra to target_size, rotates it around `pivot` to
     angle_rad, and pastes it so that pivot lands exactly at anchor_xy."""
-    rotated, (pcx, pcy) = scale_and_rotate(icon_bgra, target_size, angle_rad, pivot, squash)
+    rotated, (pcx, pcy) = scale_and_rotate(icon_bgra, target_size, angle_rad, pivot)
     paste_alpha(frame, rotated, anchor_xy[0] - pcx, anchor_xy[1] - pcy)

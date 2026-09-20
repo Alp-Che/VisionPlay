@@ -18,7 +18,6 @@ import math
 import time
 
 import cv2
-import numpy as np
 
 from core import assets
 from core.hand_tracker import HandTracker, hand_span
@@ -62,7 +61,9 @@ TARGET_PERIOD = 3.6          # seconds for a full up-and-down
 # (16x54: tips near the left edge, belly bulges right) and arrow.png
 # (26x5: fletching left, arrowhead right).
 BOW_GRIP_FRAC = (0.094, 0.5)
-BOW_TOP_TIP_FRAC = (0.094, 0.019)
+# The string is strung symmetrically about the grip, so only one tip is
+# needed: the sprite's two ends sit 0.472 and 0.481 from the grip, a
+# difference of about a pixel and a half on screen.
 BOW_BOTTOM_TIP_FRAC = (0.094, 0.972)
 ARROW_NOCK_FRAC = (0.08, 0.5)
 ARROW_TIP_FRAC = (0.90, 0.5)
