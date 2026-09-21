@@ -12,6 +12,7 @@ import time
 
 import cv2
 
+from core import assets
 from core.geometry import closest_on_segment
 from core.hand_tracker import HandTracker
 from core.paddles import HandPaddles
@@ -26,12 +27,19 @@ HOLE_COUNT = 4               # more than this and the wide holes would touch
 HOLE_LINE_FRAC = 0.94        # where the holes sit, of frame height
 HOLE_WIDTH_FRAC = 0.155      # of frame width
 
-# The mole is a capsule standing on end: a domed head on a body whose base
-# stays down the hole. Height is in half-widths, and STICK_FRAC is how much
-# of that height clears the ground at full stretch -- the rest stays buried,
-# which is what keeps it looking like it climbed out rather than floated up.
-MOLE_BODY_RADII = 3.2
+# How much of the mole's height clears the ground at full stretch. The rest
+# stays down the hole, which is what makes it look like it climbed out rather
+# than floated up. Everything else about its shape -- how wide it is next to
+# the hole, how tall next to its own width -- is taken from the drawings
+# themselves, so redrawing them at other sizes needs no code change.
 MOLE_STICK_FRAC = 0.82
+# Where the paws grip, as a fraction of the hole sprite's height, measured
+# down from the middle of the hole. Positive is towards the near rim.
+PAW_GRIP_FRAC = 0.10
+# Far enough out to count as a target -- and, because the paws appear at the
+# same moment, far enough out to look like it is holding on. Showing them
+# earlier leaves two paws gripping the rim above a mole that is barely a nose.
+HITTABLE_AT = 0.45
 
 RISE_TIME = 0.45             # a mole climbs out unhurriedly
 RETREAT_TIME = 0.32
@@ -47,12 +55,6 @@ BAD_POINTS = -3
 HAND_RADIUS_PER_SPAN = 1.15
 HAND_RADIUS_FLOOR_FRAC = 0.045
 MIN_SWIPE_FRAC = 0.35        # of frame height per second
-
-GOOD_BODY = (78, 112, 150)
-GOOD_SNOUT = (110, 150, 188)
-BAD_BODY = (70, 58, 140)
-BAD_SNOUT = (95, 85, 180)
-
 
 def _hole_centers(w):
     step = w / (HOLE_COUNT + 1)
@@ -79,58 +81,19 @@ def _finished(mole, now):
     return now - mole["born"] > RISE_TIME + mole["stay"] + RETREAT_TIME
 
 
-def _draw_hole(frame, cx, hole_y, half_w):
-    cv2.ellipse(frame, (int(cx), int(hole_y)), (int(half_w), int(half_w * 0.34)),
-                0, 0, 360, (18, 20, 24), -1, cv2.LINE_AA)
+def _mole_top_y(hole_y, out, mole_h):
+    """Top edge of the mole sprite for a mole that is `out` of the way up."""
+    return hole_y - out * MOLE_STICK_FRAC * mole_h
 
 
-def _draw_hole_lip(frame, cx, hole_y, half_w):
-    """The near rim, drawn over the mole so it looks like it's in the hole."""
-    cv2.ellipse(frame, (int(cx), int(hole_y)), (int(half_w), int(half_w * 0.34)),
-                0, 0, 180, (34, 38, 44), -1, cv2.LINE_AA)
-    cv2.ellipse(frame, (int(cx), int(hole_y)), (int(half_w), int(half_w * 0.34)),
-                0, 0, 360, (58, 64, 72), 2, cv2.LINE_AA)
-
-
-def _mole_head_y(hole_y, out, radius, body_h):
-    """Centre of the domed head for a mole that is `out` of the way out."""
-    return hole_y - out * body_h * MOLE_STICK_FRAC + radius
-
-
-def _mole_axis(cx, hole_y, out, radius, body_h):
-    """Points down the mole's visible length, for hit testing: the whole body
-    counts, not just the head."""
-    head = _mole_head_y(hole_y, out, radius, body_h)
-    base = hole_y - radius * 0.3
+def _mole_axis(cx, hole_y, out, mole_w, mole_h):
+    """Points down the mole's visible length, for hit testing: the whole of
+    what is above ground counts, not just the head."""
+    head = _mole_top_y(hole_y, out, mole_h) + mole_w * 0.5
+    base = hole_y - mole_w * 0.15
     if base <= head:
         return [(cx, head)]
     return [(cx, head + (base - head) * t) for t in (0.0, 0.5, 1.0)]
-
-
-def _draw_mole(frame, cx, cy, radius, body_h, bad):
-    """Draw into a frame already clipped to the ground above the hole, so the
-    body is hidden by the earth rather than floating over it."""
-    body = BAD_BODY if bad else GOOD_BODY
-    snout = BAD_SNOUT if bad else GOOD_SNOUT
-    # trunk below the head; its base runs on past the hole line and is clipped
-    cv2.rectangle(frame, (int(cx - radius), int(cy)),
-                  (int(cx + radius), int(cy + body_h)), body, -1)
-    cv2.circle(frame, (int(cx), int(cy)), radius, body, -1, cv2.LINE_AA)
-    cv2.ellipse(frame, (int(cx), int(cy + radius * 0.30)),
-                (int(radius * 0.52), int(radius * 0.36)), 0, 0, 360, snout, -1, cv2.LINE_AA)
-    eye_dx, eye_dy = int(radius * 0.36), int(radius * 0.22)
-    for sign in (-1, 1):
-        ex = int(cx + sign * eye_dx)
-        cv2.circle(frame, (ex, int(cy - eye_dy)), max(2, radius // 8),
-                   (235, 235, 235), -1, cv2.LINE_AA)
-        cv2.circle(frame, (ex, int(cy - eye_dy)), max(1, radius // 14),
-                   (25, 25, 25), -1, cv2.LINE_AA)
-        if bad:
-            cv2.line(frame, (int(ex - sign * radius * 0.26), int(cy - radius * 0.56)),
-                     (int(ex + sign * radius * 0.16), int(cy - radius * 0.30)),
-                     (45, 45, 190), max(2, radius // 10), cv2.LINE_AA)
-    cv2.circle(frame, (int(cx), int(cy + radius * 0.26)), max(2, radius // 9),
-               (30, 30, 40), -1, cv2.LINE_AA)
 
 
 def run_mole_mode(cap, window_name):
@@ -150,12 +113,27 @@ def run_mole_mode(cap, window_name):
     ]
     paddles_for = HandPaddles(HAND_RADIUS_PER_SPAN, HAND_RADIUS_FLOOR_FRAC * h)
 
+    hole_img = assets.load("mole/hole.png")
+    mole_imgs = {False: assets.load("mole/good.png"), True: assets.load("mole/bad.png")}
+    paw_imgs = {False: assets.load("mole/good_paws.png"), True: assets.load("mole/bad_paws.png")}
+
     centers = _hole_centers(w)
     hole_y = HOLE_LINE_FRAC * h
-    half_w = HOLE_WIDTH_FRAC * w / 2
-    mole_r = int(half_w * 0.72)
-    body_h = MOLE_BODY_RADII * mole_r
     min_swipe = MIN_SWIPE_FRAC * h
+
+    # The hole sets the scale; the mole and the paws keep whatever size they
+    # were drawn at next to it, so the artwork's own proportions survive.
+    hole_w = HOLE_WIDTH_FRAC * w
+    sprite_w = hole_img.shape[1] if hole_img is not None else 72
+    def _scaled(img, fallback):
+        if img is None:
+            return fallback
+        width = hole_w * img.shape[1] / sprite_w
+        return width, width * img.shape[0] / img.shape[1]
+
+    hole_wh = _scaled(hole_img, (hole_w, hole_w * 0.29))
+    mole_w, mole_h = _scaled(mole_imgs[False], (hole_w * 0.72, hole_w * 0.90))
+    paw_w, paw_h = _scaled(paw_imgs[False], (hole_w * 0.47, hole_w * 0.21))
 
     moles = {}               # hole index -> mole
     score = 0
@@ -212,16 +190,16 @@ def run_mole_mode(cap, window_name):
             # --- whacking ---
             for index, mole in list(moles.items()):
                 out = _progress(mole, now)
-                if mole["hit_at"] is not None or out < 0.45:
+                if mole["hit_at"] is not None or out < HITTABLE_AT:
                     continue
-                axis = _mole_axis(centers[index], hole_y, out, mole_r, body_h)
+                axis = _mole_axis(centers[index], hole_y, out, mole_w, mole_h)
                 head = axis[0]
                 for paddle in paddles:
                     speed = math.hypot(*paddle.velocity)
                     if speed < min_swipe:
                         continue
                     if not any(math.dist(closest_on_segment(paddle.start, paddle.end, point),
-                                         point) <= paddle.radius + mole_r
+                                         point) <= paddle.radius + mole_w * 0.5
                                for point in axis):
                         continue
                     mole["hit_at"] = now
@@ -246,19 +224,30 @@ def run_mole_mode(cap, window_name):
                 moles.clear()
 
             # ================= draw =================
+            # A mole is drawn over the hole it is climbing out of, but under
+            # its own paws: the paws are the outermost layer, so they read as
+            # gripping the near rim rather than being down the hole with it.
+            # The frame is sliced at the hole line first -- the slice is a
+            # view, so everything below ground is clipped away for free.
             above_ground = frame[:int(hole_y)]
             for index, cx in enumerate(centers):
-                _draw_hole(frame, cx, hole_y, half_w)
+                assets.overlay_centered(frame, hole_img, int(cx), int(hole_y),
+                                        int(hole_wh[0]), int(hole_wh[1]))
                 mole = moles.get(index)
-                if mole is not None:
-                    out = _progress(mole, now)
-                    if out > 0.01:
-                        # the slice is a view, so anything below the hole line
-                        # is clipped away for free
-                        _draw_mole(above_ground, cx,
-                                   _mole_head_y(hole_y, out, mole_r, body_h),
-                                   mole_r, body_h, mole["bad"])
-                _draw_hole_lip(frame, cx, hole_y, half_w)
+                if mole is None:
+                    continue
+                out = _progress(mole, now)
+                if out <= 0.01:
+                    continue
+                top = _mole_top_y(hole_y, out, mole_h)
+                assets.overlay(above_ground, mole_imgs[mole["bad"]],
+                               int(cx - mole_w / 2), int(top),
+                               int(mole_w), int(mole_h))
+                if out >= HITTABLE_AT:
+                    assets.overlay_centered(
+                        frame, paw_imgs[mole["bad"]], int(cx),
+                        int(hole_y + hole_wh[1] * PAW_GRIP_FRAC),
+                        int(paw_w), int(paw_h))
 
             for paddle in paddles:
                 cv2.circle(frame, (int(paddle.end[0]), int(paddle.end[1])),
