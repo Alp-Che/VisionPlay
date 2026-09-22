@@ -16,11 +16,9 @@ from core import assets
 from core.geometry import closest_on_segment
 from core.paddles import HandPaddles
 from core.pixel_font import draw_text_with_background
-from core.ui import Button, DwellClickController
+from core.ui import ROUND_SECONDS, Button, DwellClickController, draw_round_timer
 
 TOOLBAR_H = 90
-
-ROUND_SECONDS = 30.0
 
 HOLE_COUNT = 4               # more than this and the wide holes would touch
 HOLE_LINE_FRAC = 0.94        # where the holes sit, of frame height
@@ -263,18 +261,13 @@ def run_mole_mode(cap, window_name, tracker):
         draw_text_with_background(frame, f"SÜRE: {remaining:4.1f}", (w - 30, 26),
                                   scale=2, anchor="topright", color=timer_color)
 
-        bar_w = int(w * 0.5)
-        bar_x = (w - bar_w) // 2
-        cv2.rectangle(frame, (bar_x, 64), (bar_x + bar_w, 76), (55, 55, 55), -1)
-        cv2.rectangle(frame, (bar_x, 64),
-                      (bar_x + int(bar_w * remaining / ROUND_SECONDS), 76),
-                      (90, 190, 90) if remaining > 5 else (70, 70, 220), -1)
+        draw_round_timer(frame, remaining / ROUND_SECONDS)
 
         if not running:
             draw_text_with_background(frame, f"SÜRE DOLDU - PUAN: {score}",
                                       (w // 2, h // 2 - 30), scale=3, anchor="center",
                                       bg_color=(0, 60, 130))
-            draw_text_with_background(frame, "YENİDEN'E BAS", (w // 2, h // 2 + 30),
+            draw_text_with_background(frame, "YENİDEN DÜĞMESİNE BAS", (w // 2, h // 2 + 30),
                                       scale=2, anchor="center")
         elif not paddles:
             draw_text_with_background(frame, "ELLERİNİ KAMERAYA GÖSTER",

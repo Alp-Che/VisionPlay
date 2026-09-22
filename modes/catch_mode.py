@@ -17,7 +17,7 @@ import numpy as np
 
 from core.paddles import HandPaddles
 from core.pixel_font import draw_text_with_background
-from core.ui import Button, DwellClickController
+from core.ui import ROUND_SECONDS, Button, DwellClickController, draw_round_timer
 
 TOOLBAR_H = 90
 
@@ -170,6 +170,7 @@ def run_catch_mode(cap, window_name, tracker):
     score = 0
     caught, dropped = 0, 0
     next_spawn = time.time() + 0.8
+    round_start = time.time()
     popups = []              # (text, x, y, colour, until)
     last_time = time.time()
 
@@ -184,6 +185,9 @@ def run_catch_mode(cap, window_name, tracker):
         dt = min(now - last_time, 0.05)
         last_time = now
 
+        remaining = max(ROUND_SECONDS - (now - round_start), 0.0)
+        running = remaining > 0
+
         hands = tracker.process(frame)
         clicked, progress_map = dwell.update(hands, buttons)
         if clicked == "menu":
@@ -194,6 +198,7 @@ def run_catch_mode(cap, window_name, tracker):
             score, caught, dropped = 0, 0, 0
             popups.clear()
             next_spawn = now + 0.8
+            round_start = now
 
         # --- the basket hangs between the two hands ---
         previous_basket = basket
@@ -238,7 +243,7 @@ def run_catch_mode(cap, window_name, tracker):
                 basket = target
 
         # --- drops ---
-        if now >= next_spawn:
+        if running and now >= next_spawn:
             items.append(_spawn_item(w, h, radius, score))
             next_spawn = now + random.uniform(*SPAWN_EVERY)
 
@@ -290,9 +295,16 @@ def run_catch_mode(cap, window_name, tracker):
 
         draw_text_with_background(frame, f"PUAN: {score}", (w // 2, 26), scale=3,
                                   anchor="center")
+        draw_round_timer(frame, remaining / ROUND_SECONDS)
         draw_text_with_background(frame, f"KAÇAN: {dropped}", (w - 30, 26), scale=2,
                                   anchor="topright", color=(150, 150, 150))
-        if basket is None:
+        if not running:
+            draw_text_with_background(frame, f"SÜRE DOLDU - PUAN: {score}",
+                                      (w // 2, h // 2 - 30), scale=3, anchor="center",
+                                      bg_color=(0, 60, 130))
+            draw_text_with_background(frame, "YENİDEN DÜĞMESİNE BAS", (w // 2, h // 2 + 30),
+                                      scale=2, anchor="center")
+        elif basket is None:
             draw_text_with_background(frame, "İKİ ELİNİ DE GÖSTER",
                                       (w // 2, h // 2), scale=2, anchor="center",
                                       bg_color=(0, 90, 140))

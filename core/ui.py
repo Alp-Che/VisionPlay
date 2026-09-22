@@ -5,6 +5,9 @@ That is how the game is meant to be played, from across the room.
 
 By mouse: a plain left click, for whoever is setting the thing up and is
 standing at the keyboard anyway.
+
+Also here: how long a timed round lasts and the countdown bar every such
+screen draws, so a round is the same length anywhere and looks the same too.
 """
 import time
 
@@ -12,6 +15,49 @@ import cv2
 
 from core import assets
 from core.pixel_font import BUTTON
+
+
+# assets/ui/timebar.png is one drawn bar per step of the countdown, laid out
+# left to right: the first is full and green, the last is empty, and the
+# colour walks through yellow to red on the way. Using the drawn states
+# rather than squashing one sprite keeps the pixel art exactly as drawn and
+# gets the colour change for free.
+TIME_BAR_STEPS = 22
+# How long a timed round lasts, anywhere in the game.
+ROUND_SECONDS = 20.0
+
+
+def draw_time_bar(frame, remaining, x, y, width, height):
+    """Draw the countdown bar with its top-left corner at (x, y).
+
+    `remaining` runs from 1.0 at the start of a round down to 0.0 when the
+    time is up.
+    """
+    sheet = assets.load("ui/timebar.png")
+    if sheet is None:
+        return
+    step_w = sheet.shape[1] // TIME_BAR_STEPS
+    step = int(round((1.0 - min(max(remaining, 0.0), 1.0)) * (TIME_BAR_STEPS - 1)))
+    assets.overlay(frame, sheet[:, step * step_w:(step + 1) * step_w],
+                   x, y, width, height)
+
+
+def draw_round_timer(frame, remaining):
+    """The countdown bar where every timed screen puts it: across the top,
+    just under the score. `remaining` is 1.0 at the start of a round and 0.0
+    when it runs out.
+
+    Sized in whole multiples of the drawing, so its pixels stay square.
+    """
+    sheet = assets.load("ui/timebar.png")
+    if sheet is None:
+        return
+    w = frame.shape[1]
+    step_w = sheet.shape[1] // TIME_BAR_STEPS
+    zoom = max(1, round(w * 0.34 / step_w))
+    bar_w, bar_h = step_w * zoom, sheet.shape[0] * zoom
+    draw_time_bar(frame, remaining, (w - bar_w) // 2, 50, bar_w, bar_h)
+
 
 
 class _MouseClicks:

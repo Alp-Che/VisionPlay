@@ -19,7 +19,7 @@ import cv2
 from core.hand_tracker import hand_span
 from core.paddles import HandPaddles
 from core.pixel_font import draw_text_with_background
-from core.ui import Button, DwellClickController
+from core.ui import ROUND_SECONDS, Button, DwellClickController, draw_round_timer
 
 TOOLBAR_H = 90
 
@@ -144,7 +144,10 @@ def run_ninja_mode(cap, window_name, tracker):
         return "quit"
     h, w = frame.shape[:2]
 
-    buttons = [Button("menu", "MENÜ", 10, 10, 100, TOOLBAR_H - 20, color=(38, 38, 38))]
+    buttons = [
+        Button("menu", "MENÜ", 10, 10, 100, TOOLBAR_H - 20, color=(38, 38, 38)),
+        Button("restart", "YENİDEN", 120, 10, 150, TOOLBAR_H - 20, color=(26, 46, 30)),
+    ]
 
     fruits, halves = [], []
     trails = {}          # hand id -> recent fingertip positions, for the swoosh
@@ -153,6 +156,7 @@ def run_ninja_mode(cap, window_name, tracker):
     message, message_until = "", 0.0
     flash_until = 0.0
     next_spawn = time.time() + 1.0
+    round_start = time.time()
     last_time = time.time()
 
     result = None
@@ -176,13 +180,24 @@ def run_ninja_mode(cap, window_name, tracker):
         if clicked == "menu":
             result = "menu"
             break
+        elif clicked == "restart":
+            fruits.clear()
+            halves.clear()
+            trails.clear()
+            score, missed = 0, 0
+            message, message_until = "", 0.0
+            next_spawn = now + 1.0
+            round_start = now
+
+        remaining = max(ROUND_SECONDS - (now - round_start), 0.0)
+        running = remaining > 0
 
         fruit_radius = FRUIT_RADIUS_PER_HAND * hand_px
         finger_r = FINGER_RADIUS_PER_HAND * hand_px
         min_swipe = MIN_SWIPE_FRAC * h
 
         # ---- spawn ----
-        if now >= next_spawn:
+        if running and now >= next_spawn:
             for _ in range(random.choice((1, 1, 2))):
                 fruits.append(_spawn_fruit(w, h, fruit_radius))
             next_spawn = now + random.uniform(*SPAWN_EVERY)
@@ -264,10 +279,17 @@ def run_ninja_mode(cap, window_name, tracker):
 
         draw_text_with_background(frame, f"SKOR: {score}", (w // 2, 26), scale=3,
                                   anchor="center")
+        draw_round_timer(frame, remaining / ROUND_SECONDS)
         draw_text_with_background(frame, f"KAÇAN: {missed}", (w - 30, 26), scale=2,
                                   anchor="topright", color=(150, 150, 150))
         if now < flash_until:
             cv2.rectangle(frame, (0, 0), (w, h), (40, 40, 200), 14)
+        if not running:
+            draw_text_with_background(frame, f"SÜRE DOLDU - SKOR: {score}",
+                                      (w // 2, h // 2 - 30), scale=3, anchor="center",
+                                      bg_color=(0, 60, 130))
+            draw_text_with_background(frame, "YENİDEN DÜĞMESİNE BAS", (w // 2, h // 2 + 30),
+                                      scale=2, anchor="center")
         if now < message_until:
             draw_text_with_background(frame, message, (w // 2, 96), scale=3,
                                       anchor="center", bg_color=(0, 0, 130))
