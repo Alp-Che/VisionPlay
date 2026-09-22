@@ -21,17 +21,10 @@ matter in any game where the hand is swung:
 """
 import math
 
-from core.hand_tracker import hand_span
+from core.hand_tracker import MAX_HAND_SPEED, hand_span
 
 GRACE_SECONDS = 0.3
 GRACE_DAMPING = 0.85
-# Sized by measurement, and deliberately generous. A hand crossing the whole
-# 1280px frame in a quarter of a second is only ~5100 px/s, so a real swing --
-# even a wild one -- stays under this; tripping on one would cost the swept
-# segment, and in whack-a-mole the swing speed the hit test needs. It is used
-# as the furthest a hand could plausibly have travelled since the last frame:
-# anything beyond that is a different hand, not the same one teleporting.
-MAX_HAND_SPEED = 6000.0
 
 
 class Paddle:
