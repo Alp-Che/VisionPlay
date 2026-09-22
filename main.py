@@ -10,6 +10,7 @@ import cv2
 
 from core.camera import CameraStream
 from core.hand_tracker import HandTracker
+from core.ui import attach_mouse
 from modes.start import run_start
 from modes.menu import run_menu
 from modes.draw_mode import run_draw_mode
@@ -35,6 +36,7 @@ def main():
     tracker = HandTracker(num_hands=2)
 
     cv2.namedWindow(WINDOW_NAME)
+    attach_mouse(WINDOW_NAME)
 
     state = "start"
     try:

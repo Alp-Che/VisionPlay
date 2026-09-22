@@ -55,6 +55,13 @@ MAX_HAND_SPEED = 6000.0      # px/s
 # a few frames all the time; handing the controls to a stranger over it would
 # be worse than waiting.
 FOLLOW_GRACE_FRAMES = 20
+# The model does occasionally find a hand in a patterned background. Two
+# things tell those apart from a real one. They are small -- nothing standing
+# at the camera looks this tiny -- and they flicker, where a raised hand stays
+# put, so a new hand has to be found in about the same place several frames
+# running before it is allowed to take the controls.
+MIN_HAND_FRAC = 0.05         # of frame height
+CLAIM_FRAMES = 4
 
 
 def _apparent_size(hand):
@@ -82,8 +89,12 @@ class _PlayerHands:
         self.follow = follow
         self.grace = grace
         self._slots = []         # [{"at": (x, y), "missing": frames}, ...]
+        self._waiting = []       # hands not yet trusted with a place
 
-    def pick(self, hands, dt):
+    def pick(self, hands, dt, frame_h):
+        # too small to be a hand held up at the camera
+        floor = MIN_HAND_FRAC * frame_h
+        hands = [hand for hand in hands if _apparent_size(hand) >= floor]
         centres = [hand.landmarks_px[9] for hand in hands]
         # Deliberately not widened while a hand is missing. A place waiting
         # for its hand back is exactly when a stranger's hand is most likely
@@ -115,14 +126,35 @@ class _PlayerHands:
         self._slots = [self._slots[i] for i in alive]
         chosen = [chosen[i] for i in alive]
 
-        # whatever is left over goes to the hand nearest the camera
-        spare = sorted((i for i in range(len(hands)) if i not in taken),
-                       key=lambda i: _apparent_size(hands[i]), reverse=True)
-        for i in spare:
+        # Anything left over has to hold still for a few frames before it is
+        # trusted. Tracking one frame at a time is what let a bit of pattern
+        # on the back wall take a place the moment one came free.
+        still_waiting, claimed = [], set()
+        for i in range(len(hands)):
+            if i in taken:
+                continue
+            seen = 1
+            for w, waiting in enumerate(self._waiting):
+                if w in claimed:
+                    continue
+                if math.dist(centres[i], waiting["at"]) <= reach:
+                    seen = waiting["seen"] + 1
+                    claimed.add(w)
+                    break
+            still_waiting.append({"at": centres[i], "seen": seen, "hand": i})
+        # anything not found again this frame is forgotten: it has to be there
+        # frame after frame, not now and then
+        self._waiting = still_waiting
+
+        # a free place goes to the steadiest hand nearest the camera
+        ready = sorted((c for c in self._waiting if c["seen"] >= CLAIM_FRAMES),
+                       key=lambda c: _apparent_size(hands[c["hand"]]), reverse=True)
+        for candidate in ready:
             if len(self._slots) >= self.follow:
                 break
-            self._slots.append({"at": centres[i], "missing": 0})
-            chosen.append(i)
+            self._slots.append({"at": candidate["at"], "missing": 0})
+            chosen.append(candidate["hand"])
+            self._waiting.remove(candidate)
 
         return [hands[i] for i in chosen if i is not None]
 
@@ -178,7 +210,7 @@ class HandTracker:
             if result.hand_world_landmarks and i < len(result.hand_world_landmarks):
                 world = result.hand_world_landmarks[i]
             hands.append(TrackedHand(label, lm_list, w, h, world))
-        return self._players.pick(hands, dt)
+        return self._players.pick(hands, dt, h)
 
     def close(self):
         self._landmarker.close()

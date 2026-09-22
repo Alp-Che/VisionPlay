@@ -1,10 +1,52 @@
-"""Hand-controlled UI: buttons + dwell-to-click (hover + closed fist for N seconds)."""
+"""Buttons and the two ways of pressing one.
+
+By hand: hold a fingertip over a button and close your fist for a second.
+That is how the game is meant to be played, from across the room.
+
+By mouse: a plain left click, for whoever is setting the thing up and is
+standing at the keyboard anyway.
+"""
 import time
 
 import cv2
 
 from core import assets
 from core.pixel_font import BUTTON
+
+
+class _MouseClicks:
+    """Left clicks on the game window, held until a screen asks for them.
+
+    The window belongs to the whole app rather than to any one screen, so the
+    callback is attached once, in main, and each screen in turn reads from
+    here. Clicks that land on nothing are simply dropped.
+    """
+
+    def __init__(self):
+        self._pending = []
+
+    def attach(self, window_name):
+        try:
+            cv2.setMouseCallback(window_name, self._record)
+        except cv2.error:
+            pass         # no window (headless test): nothing to listen to
+
+    def _record(self, event, x, y, flags, param):
+        if event == cv2.EVENT_LBUTTONDOWN:
+            self._pending.append((x, y))
+
+    def take(self):
+        clicks, self._pending = self._pending, []
+        return clicks
+
+
+MOUSE = _MouseClicks()
+
+
+def attach_mouse(window_name):
+    """Start listening for clicks on `window_name`. Call once, after the
+    window is created."""
+    MOUSE.attach(window_name)
 
 
 class Button:
@@ -85,6 +127,17 @@ class DwellClickController:
 
     def update(self, hands, buttons):
         progress_map = {}
+
+        # A mouse click is an outright press -- no hovering, no waiting. It
+        # also clears any dwell in progress, so a click cannot be followed by
+        # a stale fist finishing a second press on its own.
+        for point in MOUSE.take():
+            for btn in buttons:
+                if btn.contains(point):
+                    self._target_id = None
+                    self._start_time = None
+                    self._latched = False
+                    return btn.id, progress_map
 
         hover_id = None
         hover_closed = False
