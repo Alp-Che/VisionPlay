@@ -9,6 +9,7 @@ import sys
 import cv2
 
 from core.camera import CameraStream
+from core.hand_tracker import HandTracker
 from modes.start import run_start
 from modes.menu import run_menu
 from modes.draw_mode import run_draw_mode
@@ -27,30 +28,37 @@ def main():
         print("Kamera acilamadi.")
         sys.exit(1)
 
+    # One hand tracker for the whole session, handed to each screen in turn.
+    # Building one is cheap but tearing one down is not -- around a quarter of
+    # a second -- so a screen that made its own would freeze the picture every
+    # time the player left it.
+    tracker = HandTracker(num_hands=2)
+
     cv2.namedWindow(WINDOW_NAME)
 
     state = "start"
     try:
         while state != "quit":
             if state == "start":
-                state = run_start(cap, WINDOW_NAME)
+                state = run_start(cap, WINDOW_NAME, tracker)
             elif state == "menu":
-                state = run_menu(cap, WINDOW_NAME)
+                state = run_menu(cap, WINDOW_NAME, tracker)
             elif state == "draw":
-                state = run_draw_mode(cap, WINDOW_NAME)
+                state = run_draw_mode(cap, WINDOW_NAME, tracker)
             elif state == "archery":
-                state = run_archery_mode(cap, WINDOW_NAME)
+                state = run_archery_mode(cap, WINDOW_NAME, tracker)
             elif state == "ninja":
-                state = run_ninja_mode(cap, WINDOW_NAME)
+                state = run_ninja_mode(cap, WINDOW_NAME, tracker)
             elif state == "juggle":
-                state = run_juggle_mode(cap, WINDOW_NAME)
+                state = run_juggle_mode(cap, WINDOW_NAME, tracker)
             elif state == "catch":
-                state = run_catch_mode(cap, WINDOW_NAME)
+                state = run_catch_mode(cap, WINDOW_NAME, tracker)
             elif state == "mole":
-                state = run_mole_mode(cap, WINDOW_NAME)
+                state = run_mole_mode(cap, WINDOW_NAME, tracker)
             else:
                 state = "quit"
     finally:
+        tracker.close()
         cap.release()
         cv2.destroyAllWindows()
 

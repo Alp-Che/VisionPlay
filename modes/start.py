@@ -2,15 +2,13 @@
 import cv2
 
 from core import assets
-from core.hand_tracker import HandTracker
 from core.pixel_font import draw_text
 from core.transform import integer_scale_for
 from core.ui import Button, DwellClickController
 
 
-def run_start(cap, window_name):
+def run_start(cap, window_name, tracker):
     """Returns 'menu' or 'quit'."""
-    tracker = HandTracker(num_hands=2)
     dwell = DwellClickController()
 
     ret, frame = cap.read()
@@ -22,42 +20,38 @@ def run_start(cap, window_name):
     buttons = [start_btn, quit_btn]
 
     result = None
-    try:
-        while result is None:
-            ret, frame = cap.read()
-            if not ret:
-                break
-            frame = cv2.flip(frame, 1)
+    while result is None:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        frame = cv2.flip(frame, 1)
 
-            hands = tracker.process(frame)
-            clicked, progress_map = dwell.update(hands, buttons)
+        hands = tracker.process(frame)
+        clicked, progress_map = dwell.update(hands, buttons)
 
-            logo = assets.load("ui/logo.png")
-            if logo is not None:
-                zoom = integer_scale_for(logo, 200)
-                lw, lh = logo.shape[1] * zoom, logo.shape[0] * zoom
-                assets.overlay(frame, logo, (w - lw) // 2, h // 2 - 60 - lh, lw, lh)
-            else:
-                draw_text(frame, "VISIONPLAY", (w // 2, h // 2 - 140), scale=5, anchor="center")
+        logo = assets.load("ui/logo.png")
+        if logo is not None:
+            zoom = integer_scale_for(logo, 200)
+            lw, lh = logo.shape[1] * zoom, logo.shape[0] * zoom
+            assets.overlay(frame, logo, (w - lw) // 2, h // 2 - 60 - lh, lw, lh)
+        else:
+            draw_text(frame, "VISIONPLAY", (w // 2, h // 2 - 140), scale=5, anchor="center")
 
-            for btn in buttons:
-                btn.draw(frame, progress=progress_map.get(btn.id, 0.0),
-                         hovered=dwell.hovered_id() == btn.id)
+        for btn in buttons:
+            btn.draw(frame, progress=progress_map.get(btn.id, 0.0),
+                     hovered=dwell.hovered_id() == btn.id)
 
-            for hand in hands:
-                cv2.circle(frame, hand.index_tip, 10,
-                           (0, 255, 0) if hand.closed else (0, 200, 255), -1)
+        for hand in hands:
+            cv2.circle(frame, hand.index_tip, 10,
+                       (0, 255, 0) if hand.closed else (0, 200, 255), -1)
 
-            draw_text(frame, "ELİNİ BUTONA GETİR, YUMRUK YAP VE 1 SANİYE BEKLE",
-                      (w // 2, h - 50), scale=2, color=(200, 200, 200), anchor="center")
+        draw_text(frame, "ELİNİ BUTONA GETİR, YUMRUK YAP VE 1 SANİYE BEKLE",
+                  (w // 2, h - 50), scale=2, color=(200, 200, 200), anchor="center")
 
-            cv2.imshow(window_name, frame)
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord('q'):
-                result = "quit"
-            elif clicked:
-                result = clicked
-    finally:
-        tracker.close()
-
+        cv2.imshow(window_name, frame)
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
+            result = "quit"
+        elif clicked:
+            result = clicked
     return result or "quit"

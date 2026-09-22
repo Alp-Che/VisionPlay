@@ -16,7 +16,7 @@ import time
 
 import cv2
 
-from core.hand_tracker import HandTracker, hand_span
+from core.hand_tracker import hand_span
 from core.paddles import HandPaddles
 from core.pixel_font import draw_text_with_background
 from core.ui import Button, DwellClickController
@@ -131,9 +131,8 @@ def _split(fruit, cut_angle):
     return halves
 
 
-def run_ninja_mode(cap, window_name):
+def run_ninja_mode(cap, window_name, tracker):
     """Returns 'menu' or 'quit'."""
-    tracker = HandTracker(num_hands=2)
     dwell = DwellClickController()
     # landmark 8 is the index fingertip. coast is left on: tracking gives out
     # exactly when a hand is swung hardest, and a cut already under way should
@@ -142,7 +141,6 @@ def run_ninja_mode(cap, window_name):
 
     ret, frame = cap.read()
     if not ret:
-        tracker.close()
         return "quit"
     h, w = frame.shape[:2]
 
@@ -158,132 +156,128 @@ def run_ninja_mode(cap, window_name):
     last_time = time.time()
 
     result = None
-    try:
-        while result is None:
-            ret, frame = cap.read()
-            if not ret:
-                break
-            frame = cv2.flip(frame, 1)
+    while result is None:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        frame = cv2.flip(frame, 1)
 
-            now = time.time()
-            dt = min(now - last_time, 0.05)
-            last_time = now
+        now = time.time()
+        dt = min(now - last_time, 0.05)
+        last_time = now
 
-            hands = tracker.process(frame)
-            if hands:
-                measured = max(hand_span(hd) for hd in hands)
-                if measured > 5:
-                    hand_px += (measured - hand_px) * 0.15
+        hands = tracker.process(frame)
+        if hands:
+            measured = max(hand_span(hd) for hd in hands)
+            if measured > 5:
+                hand_px += (measured - hand_px) * 0.15
 
-            clicked, progress_map = dwell.update(hands, buttons)
-            if clicked == "menu":
-                result = "menu"
-                break
+        clicked, progress_map = dwell.update(hands, buttons)
+        if clicked == "menu":
+            result = "menu"
+            break
 
-            fruit_radius = FRUIT_RADIUS_PER_HAND * hand_px
-            finger_r = FINGER_RADIUS_PER_HAND * hand_px
-            min_swipe = MIN_SWIPE_FRAC * h
+        fruit_radius = FRUIT_RADIUS_PER_HAND * hand_px
+        finger_r = FINGER_RADIUS_PER_HAND * hand_px
+        min_swipe = MIN_SWIPE_FRAC * h
 
-            # ---- spawn ----
-            if now >= next_spawn:
-                for _ in range(random.choice((1, 1, 2))):
-                    fruits.append(_spawn_fruit(w, h, fruit_radius))
-                next_spawn = now + random.uniform(*SPAWN_EVERY)
+        # ---- spawn ----
+        if now >= next_spawn:
+            for _ in range(random.choice((1, 1, 2))):
+                fruits.append(_spawn_fruit(w, h, fruit_radius))
+            next_spawn = now + random.uniform(*SPAWN_EVERY)
 
-            tips = finger_tracker.update(hands, now, dt)
+        tips = finger_tracker.update(hands, now, dt)
 
-            # a trail each: sharing one would draw a line from one hand to
-            # the other every time they took turns
-            live = {tip.id for tip in tips}
-            for stale in [i for i in trails if i not in live]:
-                del trails[stale]
-            for tip in tips:
-                path = trails.setdefault(tip.id, [])
-                path.append((int(tip.end[0]), int(tip.end[1])))
-                del path[:-TRAIL_LENGTH]
+        # a trail each: sharing one would draw a line from one hand to
+        # the other every time they took turns
+        live = {tip.id for tip in tips}
+        for stale in [i for i in trails if i not in live]:
+            del trails[stale]
+        for tip in tips:
+            path = trails.setdefault(tip.id, [])
+            path.append((int(tip.end[0]), int(tip.end[1])))
+            del path[:-TRAIL_LENGTH]
 
-            # ---- slicing: the path a tip swept since the last frame is the
-            # blade, so a fast flick can't skip over a fruit between frames.
-            # Each hand is tested on its own, and a fruit leaves the list the
-            # moment it is cut, so two fingers crossing it cannot score twice.
-            for tip in tips:
-                if math.hypot(*tip.velocity) < min_swipe:
-                    continue
-                angle = math.atan2(tip.velocity[1], tip.velocity[0])
-                for fruit in fruits[:]:
-                    center = (fruit["x"], fruit["y"])
-                    if not _segment_hits_circle(tip.start, tip.end,
-                                                center, fruit["r"] + finger_r):
-                        continue
-                    fruits.remove(fruit)
-                    halves.extend(_split(fruit, angle))
-                    if fruit.get("bomb"):
-                        score += BOMB_POINTS
-                        message, message_until = "BOMBA!", now + 1.2
-                        flash_until = now + 0.18
-                    else:
-                        score += 1
-
-            # ---- physics ----
-            for item in fruits + halves:
-                item["vy"] += GRAVITY * dt
-                item["x"] += item["vx"] * dt
-                item["y"] += item["vy"] * dt
-                item["angle"] = item.get("angle", 0.0) + item["spin"] * dt
+        # ---- slicing: the path a tip swept since the last frame is the
+        # blade, so a fast flick can't skip over a fruit between frames.
+        # Each hand is tested on its own, and a fruit leaves the list the
+        # moment it is cut, so two fingers crossing it cannot score twice.
+        for tip in tips:
+            if math.hypot(*tip.velocity) < min_swipe:
+                continue
+            angle = math.atan2(tip.velocity[1], tip.velocity[0])
             for fruit in fruits[:]:
-                gone = (fruit["y"] - fruit["r"] > h
-                        or fruit["x"] < -3 * fruit["r"] or fruit["x"] > w + 3 * fruit["r"])
-                if gone:
-                    fruits.remove(fruit)
-                    if not fruit.get("bomb"):
-                        missed += 1
-            halves = [hf for hf in halves if hf["y"] - hf["r"] <= h]
+                center = (fruit["x"], fruit["y"])
+                if not _segment_hits_circle(tip.start, tip.end,
+                                            center, fruit["r"] + finger_r):
+                    continue
+                fruits.remove(fruit)
+                halves.extend(_split(fruit, angle))
+                if fruit.get("bomb"):
+                    score += BOMB_POINTS
+                    message, message_until = "BOMBA!", now + 1.2
+                    flash_until = now + 0.18
+                else:
+                    score += 1
 
-            # ================= draw =================
-            for half in halves:
-                _draw_half(frame, half)
-            for fruit in fruits:
-                _draw_fruit(frame, fruit)
+        # ---- physics ----
+        for item in fruits + halves:
+            item["vy"] += GRAVITY * dt
+            item["x"] += item["vx"] * dt
+            item["y"] += item["vy"] * dt
+            item["angle"] = item.get("angle", 0.0) + item["spin"] * dt
+        for fruit in fruits[:]:
+            gone = (fruit["y"] - fruit["r"] > h
+                    or fruit["x"] < -3 * fruit["r"] or fruit["x"] > w + 3 * fruit["r"])
+            if gone:
+                fruits.remove(fruit)
+                if not fruit.get("bomb"):
+                    missed += 1
+        halves = [hf for hf in halves if hf["y"] - hf["r"] <= h]
 
-            for path in trails.values():
-                for i in range(1, len(path)):
-                    fade = i / len(path)
-                    shade = int(90 + 165 * fade)
-                    cv2.line(frame, path[i - 1], path[i], (shade, shade, shade),
-                             max(1, int(1 + 4 * fade)), cv2.LINE_AA)
+        # ================= draw =================
+        for half in halves:
+            _draw_half(frame, half)
+        for fruit in fruits:
+            _draw_fruit(frame, fruit)
 
-            for tip in tips:
-                # the tip itself, so the player can see exactly what cuts, and
-                # a ring around it marking the forgiveness it actually gets
-                point = (int(tip.end[0]), int(tip.end[1]))
-                cv2.circle(frame, point, max(3, int(finger_r)),
-                           (255, 255, 255), -1, cv2.LINE_AA)
-                cv2.circle(frame, point, max(6, int(finger_r) + 4),
-                           (120, 200, 255), 2, cv2.LINE_AA)
+        for path in trails.values():
+            for i in range(1, len(path)):
+                fade = i / len(path)
+                shade = int(90 + 165 * fade)
+                cv2.line(frame, path[i - 1], path[i], (shade, shade, shade),
+                         max(1, int(1 + 4 * fade)), cv2.LINE_AA)
 
-            for btn in buttons:
-                btn.draw(frame, progress=progress_map.get(btn.id, 0.0),
-                         hovered=dwell.hovered_id() == btn.id)
+        for tip in tips:
+            # the tip itself, so the player can see exactly what cuts, and
+            # a ring around it marking the forgiveness it actually gets
+            point = (int(tip.end[0]), int(tip.end[1]))
+            cv2.circle(frame, point, max(3, int(finger_r)),
+                       (255, 255, 255), -1, cv2.LINE_AA)
+            cv2.circle(frame, point, max(6, int(finger_r) + 4),
+                       (120, 200, 255), 2, cv2.LINE_AA)
 
-            draw_text_with_background(frame, f"SKOR: {score}", (w // 2, 26), scale=3,
-                                      anchor="center")
-            draw_text_with_background(frame, f"KAÇAN: {missed}", (w - 30, 26), scale=2,
-                                      anchor="topright", color=(150, 150, 150))
-            if now < flash_until:
-                cv2.rectangle(frame, (0, 0), (w, h), (40, 40, 200), 14)
-            if now < message_until:
-                draw_text_with_background(frame, message, (w // 2, 96), scale=3,
-                                          anchor="center", bg_color=(0, 0, 130))
-            draw_text_with_background(frame, "İKİ İŞARET PARMAĞINLA DA KESEBİLİRSİN",
-                                      (14, h - 44), scale=2, color=(200, 200, 200))
+        for btn in buttons:
+            btn.draw(frame, progress=progress_map.get(btn.id, 0.0),
+                     hovered=dwell.hovered_id() == btn.id)
 
-            cv2.imshow(window_name, frame)
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord('q'):
-                result = "quit"
-            elif key == 27:
-                result = "menu"
-    finally:
-        tracker.close()
+        draw_text_with_background(frame, f"SKOR: {score}", (w // 2, 26), scale=3,
+                                  anchor="center")
+        draw_text_with_background(frame, f"KAÇAN: {missed}", (w - 30, 26), scale=2,
+                                  anchor="topright", color=(150, 150, 150))
+        if now < flash_until:
+            cv2.rectangle(frame, (0, 0), (w, h), (40, 40, 200), 14)
+        if now < message_until:
+            draw_text_with_background(frame, message, (w // 2, 96), scale=3,
+                                      anchor="center", bg_color=(0, 0, 130))
+        draw_text_with_background(frame, "İKİ İŞARET PARMAĞINLA DA KESEBİLİRSİN",
+                                  (14, h - 44), scale=2, color=(200, 200, 200))
 
+        cv2.imshow(window_name, frame)
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
+            result = "quit"
+        elif key == 27:
+            result = "menu"
     return result or "quit"

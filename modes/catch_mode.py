@@ -15,7 +15,6 @@ import time
 import cv2
 import numpy as np
 
-from core.hand_tracker import HandTracker
 from core.paddles import HandPaddles
 from core.pixel_font import draw_text_with_background
 from core.ui import Button, DwellClickController
@@ -134,14 +133,12 @@ def _solo_offset(palm, remembered_palms, remembered_basket, w, default_gap, drop
     return (toward, drop)
 
 
-def run_catch_mode(cap, window_name):
+def run_catch_mode(cap, window_name, tracker):
     """Returns 'menu' or 'quit'."""
-    tracker = HandTracker(num_hands=2)
     dwell = DwellClickController()
 
     ret, frame = cap.read()
     if not ret:
-        tracker.close()
         return "quit"
     h, w = frame.shape[:2]
 
@@ -177,140 +174,136 @@ def run_catch_mode(cap, window_name):
     last_time = time.time()
 
     result = None
-    try:
-        while result is None:
-            ret, frame = cap.read()
-            if not ret:
-                break
-            frame = cv2.flip(frame, 1)
+    while result is None:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        frame = cv2.flip(frame, 1)
 
-            now = time.time()
-            dt = min(now - last_time, 0.05)
-            last_time = now
+        now = time.time()
+        dt = min(now - last_time, 0.05)
+        last_time = now
 
-            hands = tracker.process(frame)
-            clicked, progress_map = dwell.update(hands, buttons)
-            if clicked == "menu":
-                result = "menu"
-                break
-            elif clicked == "restart":
-                items.clear()
-                score, caught, dropped = 0, 0, 0
-                popups.clear()
-                next_spawn = now + 0.8
+        hands = tracker.process(frame)
+        clicked, progress_map = dwell.update(hands, buttons)
+        if clicked == "menu":
+            result = "menu"
+            break
+        elif clicked == "restart":
+            items.clear()
+            score, caught, dropped = 0, 0, 0
+            popups.clear()
+            next_spawn = now + 0.8
 
-            # --- the basket hangs between the two hands ---
-            previous_basket = basket
-            target = None
-            # a briefly lost hand is held in place for a moment, so the
-            # basket doesn't blink out with it
-            palms = [p.end for p in hands_tracker.update(hands, now, dt)]
+        # --- the basket hangs between the two hands ---
+        previous_basket = basket
+        target = None
+        # a briefly lost hand is held in place for a moment, so the
+        # basket doesn't blink out with it
+        palms = [p.end for p in hands_tracker.update(hands, now, dt)]
 
-            if len(palms) >= 2:
-                first, second = palms[0], palms[1]
-                target = ((first[0] + second[0]) / 2.0,
-                          (first[1] + second[1]) / 2.0 + drop)
-                remembered_palms = (first, second)
-                remembered_basket = target
-                solo_offset = None      # both hands are back; decide afresh
-            elif len(palms) == 1:
-                # one hand left the frame: keep the basket where it sat
-                # relative to the hand still showing, so it doesn't disappear
-                if solo_offset is None:
-                    solo_offset = _solo_offset(palms[0], remembered_palms,
-                                               remembered_basket, w,
-                                               default_gap, drop)
-                target = (palms[0][0] + solo_offset[0],
-                          palms[0][1] + solo_offset[1])
+        if len(palms) >= 2:
+            first, second = palms[0], palms[1]
+            target = ((first[0] + second[0]) / 2.0,
+                      (first[1] + second[1]) / 2.0 + drop)
+            remembered_palms = (first, second)
+            remembered_basket = target
+            solo_offset = None      # both hands are back; decide afresh
+        elif len(palms) == 1:
+            # one hand left the frame: keep the basket where it sat
+            # relative to the hand still showing, so it doesn't disappear
+            if solo_offset is None:
+                solo_offset = _solo_offset(palms[0], remembered_palms,
+                                           remembered_basket, w,
+                                           default_gap, drop)
+            target = (palms[0][0] + solo_offset[0],
+                      palms[0][1] + solo_offset[1])
+        else:
+            solo_offset = None
+
+        # Pinned straight to the hands -- anything that eases towards them
+        # cannot keep up with a fast swipe -- but never moving faster than
+        # hands can, so a tracker hiccup slides the basket instead of
+        # flinging it.
+        if target is None or basket is None:
+            basket = target
+        else:
+            dx, dy = target[0] - basket[0], target[1] - basket[1]
+            distance = math.hypot(dx, dy)
+            reach = MAX_BASKET_SPEED * dt
+            if distance > reach:
+                basket = (basket[0] + dx * reach / distance,
+                          basket[1] + dy * reach / distance)
             else:
-                solo_offset = None
-
-            # Pinned straight to the hands -- anything that eases towards them
-            # cannot keep up with a fast swipe -- but never moving faster than
-            # hands can, so a tracker hiccup slides the basket instead of
-            # flinging it.
-            if target is None or basket is None:
                 basket = target
-            else:
-                dx, dy = target[0] - basket[0], target[1] - basket[1]
-                distance = math.hypot(dx, dy)
-                reach = MAX_BASKET_SPEED * dt
-                if distance > reach:
-                    basket = (basket[0] + dx * reach / distance,
-                              basket[1] + dy * reach / distance)
-                else:
-                    basket = target
 
-            # --- drops ---
-            if now >= next_spawn:
-                items.append(_spawn_item(w, h, radius, score))
-                next_spawn = now + random.uniform(*SPAWN_EVERY)
+        # --- drops ---
+        if now >= next_spawn:
+            items.append(_spawn_item(w, h, radius, score))
+            next_spawn = now + random.uniform(*SPAWN_EVERY)
 
-            for item in items:
-                item["x"] += item["vx"] * dt
-                item["y"] += item["vy"] * dt
+        for item in items:
+            item["x"] += item["vx"] * dt
+            item["y"] += item["vy"] * dt
 
-            # --- catching ---
-            if basket is not None and previous_basket is not None:
-                cx, rim_y = basket
-                previous_rim = previous_basket[1]
-                for item in items[:]:
-                    was_above = (item["y"] - item["vy"] * dt) < previous_rim
-                    now_at_or_below = item["y"] >= rim_y
-                    if was_above and now_at_or_below and abs(item["x"] - cx) <= half_w:
-                        items.remove(item)
-                        score += item["points"]
-                        caught += 1
-                        popups.append((f"+{item['points']}" if item["points"] > 0
-                                       else str(item["points"]),
-                                       item["x"], rim_y,
-                                       (120, 240, 120) if item["points"] > 0 else (110, 110, 240),
-                                       now + 0.8))
-
+        # --- catching ---
+        if basket is not None and previous_basket is not None:
+            cx, rim_y = basket
+            previous_rim = previous_basket[1]
             for item in items[:]:
-                if item["y"] - radius > h or item["x"] < -radius * 3 or item["x"] > w + radius * 3:
+                was_above = (item["y"] - item["vy"] * dt) < previous_rim
+                now_at_or_below = item["y"] >= rim_y
+                if was_above and now_at_or_below and abs(item["x"] - cx) <= half_w:
                     items.remove(item)
-                    if item["points"] > 0:
-                        dropped += 1
+                    score += item["points"]
+                    caught += 1
+                    popups.append((f"+{item['points']}" if item["points"] > 0
+                                   else str(item["points"]),
+                                   item["x"], rim_y,
+                                   (120, 240, 120) if item["points"] > 0 else (110, 110, 240),
+                                   now + 0.8))
 
-            popups = [p for p in popups if p[4] > now]
+        for item in items[:]:
+            if item["y"] - radius > h or item["x"] < -radius * 3 or item["x"] > w + radius * 3:
+                items.remove(item)
+                if item["points"] > 0:
+                    dropped += 1
 
-            # ================= draw =================
-            for item in items:
-                _draw_item(frame, item, radius)
+        popups = [p for p in popups if p[4] > now]
 
-            if basket is not None:
-                _draw_basket(frame, basket[0], basket[1], half_w, basket_h)
+        # ================= draw =================
+        for item in items:
+            _draw_item(frame, item, radius)
 
-            for text, px, py, color, _until in popups:
-                draw_text_with_background(frame, text, (int(px), int(py) - 30), scale=3,
-                                          anchor="center", color=color)
+        if basket is not None:
+            _draw_basket(frame, basket[0], basket[1], half_w, basket_h)
 
-            for btn in buttons:
-                btn.draw(frame, progress=progress_map.get(btn.id, 0.0),
-                         hovered=dwell.hovered_id() == btn.id)
+        for text, px, py, color, _until in popups:
+            draw_text_with_background(frame, text, (int(px), int(py) - 30), scale=3,
+                                      anchor="center", color=color)
 
-            _draw_legend(frame, 20, TOOLBAR_H + 40)
+        for btn in buttons:
+            btn.draw(frame, progress=progress_map.get(btn.id, 0.0),
+                     hovered=dwell.hovered_id() == btn.id)
 
-            draw_text_with_background(frame, f"PUAN: {score}", (w // 2, 26), scale=3,
-                                      anchor="center")
-            draw_text_with_background(frame, f"KAÇAN: {dropped}", (w - 30, 26), scale=2,
-                                      anchor="topright", color=(150, 150, 150))
-            if basket is None:
-                draw_text_with_background(frame, "İKİ ELİNİ DE GÖSTER",
-                                          (w // 2, h // 2), scale=2, anchor="center",
-                                          bg_color=(0, 90, 140))
+        _draw_legend(frame, 20, TOOLBAR_H + 40)
 
-            draw_text_with_background(frame, "SEPET İKİ ELİNİN ARASINDA - SİYAHLARDAN KAÇIN",
-                                      (14, h - 44), scale=2, color=(200, 200, 200))
+        draw_text_with_background(frame, f"PUAN: {score}", (w // 2, 26), scale=3,
+                                  anchor="center")
+        draw_text_with_background(frame, f"KAÇAN: {dropped}", (w - 30, 26), scale=2,
+                                  anchor="topright", color=(150, 150, 150))
+        if basket is None:
+            draw_text_with_background(frame, "İKİ ELİNİ DE GÖSTER",
+                                      (w // 2, h // 2), scale=2, anchor="center",
+                                      bg_color=(0, 90, 140))
 
-            cv2.imshow(window_name, frame)
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord('q'):
-                result = "quit"
-            elif key == 27:
-                result = "menu"
-    finally:
-        tracker.close()
+        draw_text_with_background(frame, "SEPET İKİ ELİNİN ARASINDA - SİYAHLARDAN KAÇIN",
+                                  (14, h - 44), scale=2, color=(200, 200, 200))
 
+        cv2.imshow(window_name, frame)
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
+            result = "quit"
+        elif key == 27:
+            result = "menu"
     return result or "quit"

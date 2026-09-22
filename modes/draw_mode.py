@@ -10,7 +10,6 @@ import cv2
 import numpy as np
 
 from core import assets
-from core.hand_tracker import HandTracker
 from core.pixel_font import draw_text_with_background
 from core.ui import Button, DwellClickController
 
@@ -40,14 +39,12 @@ def _build_toolbar(w):
     return buttons
 
 
-def run_draw_mode(cap, window_name):
+def run_draw_mode(cap, window_name, tracker):
     """Returns 'menu' or 'quit'."""
-    tracker = HandTracker(num_hands=2)
     dwell = DwellClickController()
 
     ret, frame = cap.read()
     if not ret:
-        tracker.close()
         return "quit"
     h, w = frame.shape[:2]
 
@@ -63,94 +60,90 @@ def run_draw_mode(cap, window_name):
     prev_point = None
 
     result = None
-    try:
-        while result is None:
-            ret, frame = cap.read()
-            if not ret:
-                break
-            frame = cv2.flip(frame, 1)
+    while result is None:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        frame = cv2.flip(frame, 1)
 
-            hands = tracker.process(frame)
-            clicked, progress_map = dwell.update(hands, buttons)
+        hands = tracker.process(frame)
+        clicked, progress_map = dwell.update(hands, buttons)
 
-            if clicked == "menu":
-                result = "menu"
-                break
-            elif clicked == "clear":
-                canvas_mask[:] = 0
-            elif clicked == "eraser":
-                active_mode = "eraser"
-                active_button_id = "eraser"
-            elif clicked in color_lookup:
-                active_mode = "brush"
-                active_color = color_lookup[clicked]
-                active_button_id = clicked
+        if clicked == "menu":
+            result = "menu"
+            break
+        elif clicked == "clear":
+            canvas_mask[:] = 0
+        elif clicked == "eraser":
+            active_mode = "eraser"
+            active_button_id = "eraser"
+        elif clicked in color_lookup:
+            active_mode = "brush"
+            active_color = color_lookup[clicked]
+            active_button_id = clicked
 
-            right_hand = next((hd for hd in hands if hd.label == "Right"), None)
-            left_hand = next((hd for hd in hands if hd.label == "Left"), None)
+        right_hand = next((hd for hd in hands if hd.label == "Right"), None)
+        left_hand = next((hd for hd in hands if hd.label == "Left"), None)
 
-            pen_down = (
-                right_hand is not None
-                and left_hand is not None
-                and left_hand.closed
-                and right_hand.index_tip[1] > TOOLBAR_H
-            )
+        pen_down = (
+            right_hand is not None
+            and left_hand is not None
+            and left_hand.closed
+            and right_hand.index_tip[1] > TOOLBAR_H
+        )
 
-            if pen_down:
-                pt = right_hand.index_tip
-                if prev_point is None:
-                    prev_point = pt
-                thickness = ERASER_THICKNESS if active_mode == "eraser" else BRUSH_THICKNESS
-                if active_mode == "eraser":
-                    cv2.line(canvas_mask, prev_point, pt, 0, thickness)
-                else:
-                    cv2.line(canvas_color, prev_point, pt, active_color, thickness)
-                    cv2.line(canvas_mask, prev_point, pt, 255, thickness)
+        if pen_down:
+            pt = right_hand.index_tip
+            if prev_point is None:
                 prev_point = pt
+            thickness = ERASER_THICKNESS if active_mode == "eraser" else BRUSH_THICKNESS
+            if active_mode == "eraser":
+                cv2.line(canvas_mask, prev_point, pt, 0, thickness)
             else:
-                prev_point = None
+                cv2.line(canvas_color, prev_point, pt, active_color, thickness)
+                cv2.line(canvas_mask, prev_point, pt, 255, thickness)
+            prev_point = pt
+        else:
+            prev_point = None
 
-            display = frame.copy()
-            mask_bool = canvas_mask > 0
-            display[mask_bool] = canvas_color[mask_bool]
+        display = frame.copy()
+        mask_bool = canvas_mask > 0
+        display[mask_bool] = canvas_color[mask_bool]
 
-            toolbar_bg = assets.load("ui/toolbar_bg.png")
-            if toolbar_bg is not None:
-                assets.overlay_fill(display, toolbar_bg, 0, 0, w, TOOLBAR_H)
+        toolbar_bg = assets.load("ui/toolbar_bg.png")
+        if toolbar_bg is not None:
+            assets.overlay_fill(display, toolbar_bg, 0, 0, w, TOOLBAR_H)
 
-            for btn in buttons:
-                hovered = dwell.hovered_id() == btn.id
-                progress = progress_map.get(btn.id, 0.0)
-                selected = btn.id == active_button_id
-                btn.draw(display, progress=progress, hovered=hovered, selected=selected)
+        for btn in buttons:
+            hovered = dwell.hovered_id() == btn.id
+            progress = progress_map.get(btn.id, 0.0)
+            selected = btn.id == active_button_id
+            btn.draw(display, progress=progress, hovered=hovered, selected=selected)
 
-            if right_hand:
-                brush_cursor = assets.load("ui/cursor_brush.png")
-                if brush_cursor is not None:
-                    assets.overlay_centered(display, brush_cursor, *right_hand.index_tip, 50, 50)
-                else:
-                    cv2.circle(display, right_hand.index_tip, 12, (255, 255, 255), 2)
-            if left_hand:
-                left_cursor = assets.load("ui/cursor_closed.png" if left_hand.closed else "ui/cursor_open.png")
-                if left_cursor is not None:
-                    assets.overlay_centered(display, left_cursor, *left_hand.index_tip, 50, 50)
-                else:
-                    marker_color = (0, 255, 0) if left_hand.closed else (0, 165, 255)
-                    cv2.circle(display, left_hand.index_tip, 10, marker_color, -1)
+        if right_hand:
+            brush_cursor = assets.load("ui/cursor_brush.png")
+            if brush_cursor is not None:
+                assets.overlay_centered(display, brush_cursor, *right_hand.index_tip, 50, 50)
+            else:
+                cv2.circle(display, right_hand.index_tip, 12, (255, 255, 255), 2)
+        if left_hand:
+            left_cursor = assets.load("ui/cursor_closed.png" if left_hand.closed else "ui/cursor_open.png")
+            if left_cursor is not None:
+                assets.overlay_centered(display, left_cursor, *left_hand.index_tip, 50, 50)
+            else:
+                marker_color = (0, 255, 0) if left_hand.closed else (0, 165, 255)
+                cv2.circle(display, left_hand.index_tip, 10, marker_color, -1)
 
-            status = f"MOD: {'SİLGİ' if active_mode == 'eraser' else 'FIRÇA'}"
-            draw_text_with_background(display, status, (14, h - 44), scale=2)
-            hint = "SAĞ EL: KONUM   SOL EL YUMRUK: ÇİZ"
-            draw_text_with_background(display, hint, (14, h - 90), scale=2,
-                                      color=(200, 200, 200))
+        status = f"MOD: {'SİLGİ' if active_mode == 'eraser' else 'FIRÇA'}"
+        draw_text_with_background(display, status, (14, h - 44), scale=2)
+        hint = "SAĞ EL: KONUM   SOL EL YUMRUK: ÇİZ"
+        draw_text_with_background(display, hint, (14, h - 90), scale=2,
+                                  color=(200, 200, 200))
 
-            cv2.imshow(window_name, display)
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord('q'):
-                result = "quit"
-            elif key == 27:
-                result = "menu"
-    finally:
-        tracker.close()
-
+        cv2.imshow(window_name, display)
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
+            result = "quit"
+        elif key == 27:
+            result = "menu"
     return result or "quit"

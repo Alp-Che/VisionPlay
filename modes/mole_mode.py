@@ -14,7 +14,6 @@ import cv2
 
 from core import assets
 from core.geometry import closest_on_segment
-from core.hand_tracker import HandTracker
 from core.paddles import HandPaddles
 from core.pixel_font import draw_text_with_background
 from core.ui import Button, DwellClickController
@@ -96,14 +95,12 @@ def _mole_axis(cx, hole_y, out, mole_w, mole_h):
     return [(cx, head + (base - head) * t) for t in (0.0, 0.5, 1.0)]
 
 
-def run_mole_mode(cap, window_name):
+def run_mole_mode(cap, window_name, tracker):
     """Returns 'menu' or 'quit'."""
-    tracker = HandTracker(num_hands=2)
     dwell = DwellClickController()
 
     ret, frame = cap.read()
     if not ret:
-        tracker.close()
         return "quit"
     h, w = frame.shape[:2]
 
@@ -144,158 +141,154 @@ def run_mole_mode(cap, window_name):
     last_time = time.time()
 
     result = None
-    try:
-        while result is None:
-            ret, frame = cap.read()
-            if not ret:
-                break
-            frame = cv2.flip(frame, 1)
+    while result is None:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        frame = cv2.flip(frame, 1)
 
-            now = time.time()
-            dt = min(now - last_time, 0.05)
-            last_time = now
+        now = time.time()
+        dt = min(now - last_time, 0.05)
+        last_time = now
 
-            hands = tracker.process(frame)
-            clicked, progress_map = dwell.update(hands, buttons)
-            if clicked == "menu":
-                result = "menu"
-                break
-            elif clicked == "restart":
-                moles.clear()
-                popups.clear()
-                score, hits, misses = 0, 0, 0
-                round_start = now
-                next_spawn = now + 0.6
+        hands = tracker.process(frame)
+        clicked, progress_map = dwell.update(hands, buttons)
+        if clicked == "menu":
+            result = "menu"
+            break
+        elif clicked == "restart":
+            moles.clear()
+            popups.clear()
+            score, hits, misses = 0, 0, 0
+            round_start = now
+            next_spawn = now + 0.6
 
-            elapsed = now - round_start
-            remaining = max(ROUND_SECONDS - elapsed, 0.0)
-            running = remaining > 0
-            ramp = min(elapsed / ROUND_SECONDS, 1.0)
+        elapsed = now - round_start
+        remaining = max(ROUND_SECONDS - elapsed, 0.0)
+        running = remaining > 0
+        ramp = min(elapsed / ROUND_SECONDS, 1.0)
 
-            paddles = paddles_for.update(hands, now, dt)
+        paddles = paddles_for.update(hands, now, dt)
 
-            # --- spawn ---
-            if running and now >= next_spawn:
-                free = [i for i in range(HOLE_COUNT) if i not in moles]
-                if free:
-                    index = random.choice(free)
-                    moles[index] = {
-                        "born": now,
-                        "stay": STAY_START + (STAY_END - STAY_START) * ramp,
-                        "bad": random.random() < BAD_SHARE,
-                        "hit_at": None, "hit_height": 1.0,
-                    }
-                next_spawn = now + (SPAWN_START + (SPAWN_END - SPAWN_START) * ramp)
+        # --- spawn ---
+        if running and now >= next_spawn:
+            free = [i for i in range(HOLE_COUNT) if i not in moles]
+            if free:
+                index = random.choice(free)
+                moles[index] = {
+                    "born": now,
+                    "stay": STAY_START + (STAY_END - STAY_START) * ramp,
+                    "bad": random.random() < BAD_SHARE,
+                    "hit_at": None, "hit_height": 1.0,
+                }
+            next_spawn = now + (SPAWN_START + (SPAWN_END - SPAWN_START) * ramp)
 
-            # --- whacking ---
-            for index, mole in list(moles.items()):
-                out = _progress(mole, now)
-                if mole["hit_at"] is not None or out < HITTABLE_AT:
-                    continue
-                axis = _mole_axis(centers[index], hole_y, out, mole_w, mole_h)
-                head = axis[0]
-                for paddle in paddles:
-                    speed = math.hypot(*paddle.velocity)
-                    if speed < min_swipe:
-                        continue
-                    if not any(math.dist(closest_on_segment(paddle.start, paddle.end, point),
-                                         point) <= paddle.radius + mole_w * 0.5
-                               for point in axis):
-                        continue
-                    mole["hit_at"] = now
-                    mole["hit_height"] = out
-                    points = BAD_POINTS if mole["bad"] else GOOD_POINTS
-                    score += points
-                    hits += 1
-                    popups.append((f"+{points}" if points > 0 else str(points),
-                                   head[0], head[1],
-                                   (120, 240, 120) if points > 0 else (110, 110, 240),
-                                   now + 0.7))
-                    break
-
-            for index, mole in list(moles.items()):
-                if _finished(mole, now):
-                    if mole["hit_at"] is None and not mole["bad"]:
-                        misses += 1
-                    moles.pop(index)
-
-            popups = [p for p in popups if p[4] > now]
-            if not running:
-                moles.clear()
-
-            # ================= draw =================
-            # A mole is drawn over the hole it is climbing out of, but under
-            # its own paws: the paws are the outermost layer, so they read as
-            # gripping the near rim rather than being down the hole with it.
-            # The frame is sliced at the hole line first -- the slice is a
-            # view, so everything below ground is clipped away for free.
-            above_ground = frame[:int(hole_y)]
-            for index, cx in enumerate(centers):
-                assets.overlay_centered(frame, hole_img, int(cx), int(hole_y),
-                                        int(hole_wh[0]), int(hole_wh[1]))
-                mole = moles.get(index)
-                if mole is None:
-                    continue
-                out = _progress(mole, now)
-                if out <= 0.01:
-                    continue
-                top = _mole_top_y(hole_y, out, mole_h)
-                assets.overlay(above_ground, mole_imgs[mole["bad"]],
-                               int(cx - mole_w / 2), int(top),
-                               int(mole_w), int(mole_h))
-                if out >= HITTABLE_AT:
-                    assets.overlay_centered(
-                        frame, paw_imgs[mole["bad"]], int(cx),
-                        int(hole_y + hole_wh[1] * PAW_GRIP_FRAC),
-                        int(paw_w), int(paw_h))
-
+        # --- whacking ---
+        for index, mole in list(moles.items()):
+            out = _progress(mole, now)
+            if mole["hit_at"] is not None or out < HITTABLE_AT:
+                continue
+            axis = _mole_axis(centers[index], hole_y, out, mole_w, mole_h)
+            head = axis[0]
             for paddle in paddles:
-                cv2.circle(frame, (int(paddle.end[0]), int(paddle.end[1])),
-                           int(paddle.radius), (70, 170, 70), 2, cv2.LINE_AA)
+                speed = math.hypot(*paddle.velocity)
+                if speed < min_swipe:
+                    continue
+                if not any(math.dist(closest_on_segment(paddle.start, paddle.end, point),
+                                     point) <= paddle.radius + mole_w * 0.5
+                           for point in axis):
+                    continue
+                mole["hit_at"] = now
+                mole["hit_height"] = out
+                points = BAD_POINTS if mole["bad"] else GOOD_POINTS
+                score += points
+                hits += 1
+                popups.append((f"+{points}" if points > 0 else str(points),
+                               head[0], head[1],
+                               (120, 240, 120) if points > 0 else (110, 110, 240),
+                               now + 0.7))
+                break
 
-            for text, px, py, color, _until in popups:
-                draw_text_with_background(frame, text, (int(px), int(py) - 40), scale=3,
-                                          anchor="center", color=color)
+        for index, mole in list(moles.items()):
+            if _finished(mole, now):
+                if mole["hit_at"] is None and not mole["bad"]:
+                    misses += 1
+                moles.pop(index)
 
-            for btn in buttons:
-                btn.draw(frame, progress=progress_map.get(btn.id, 0.0),
-                         hovered=dwell.hovered_id() == btn.id)
+        popups = [p for p in popups if p[4] > now]
+        if not running:
+            moles.clear()
 
-            draw_text_with_background(frame, f"PUAN: {score}", (w // 2, 26), scale=3,
-                                      anchor="center")
-            timer_color = (110, 110, 240) if remaining <= 5 else (200, 200, 200)
-            draw_text_with_background(frame, f"SÜRE: {remaining:4.1f}", (w - 30, 26),
-                                      scale=2, anchor="topright", color=timer_color)
+        # ================= draw =================
+        # A mole is drawn over the hole it is climbing out of, but under
+        # its own paws: the paws are the outermost layer, so they read as
+        # gripping the near rim rather than being down the hole with it.
+        # The frame is sliced at the hole line first -- the slice is a
+        # view, so everything below ground is clipped away for free.
+        above_ground = frame[:int(hole_y)]
+        for index, cx in enumerate(centers):
+            assets.overlay_centered(frame, hole_img, int(cx), int(hole_y),
+                                    int(hole_wh[0]), int(hole_wh[1]))
+            mole = moles.get(index)
+            if mole is None:
+                continue
+            out = _progress(mole, now)
+            if out <= 0.01:
+                continue
+            top = _mole_top_y(hole_y, out, mole_h)
+            assets.overlay(above_ground, mole_imgs[mole["bad"]],
+                           int(cx - mole_w / 2), int(top),
+                           int(mole_w), int(mole_h))
+            if out >= HITTABLE_AT:
+                assets.overlay_centered(
+                    frame, paw_imgs[mole["bad"]], int(cx),
+                    int(hole_y + hole_wh[1] * PAW_GRIP_FRAC),
+                    int(paw_w), int(paw_h))
 
-            bar_w = int(w * 0.5)
-            bar_x = (w - bar_w) // 2
-            cv2.rectangle(frame, (bar_x, 64), (bar_x + bar_w, 76), (55, 55, 55), -1)
-            cv2.rectangle(frame, (bar_x, 64),
-                          (bar_x + int(bar_w * remaining / ROUND_SECONDS), 76),
-                          (90, 190, 90) if remaining > 5 else (70, 70, 220), -1)
+        for paddle in paddles:
+            cv2.circle(frame, (int(paddle.end[0]), int(paddle.end[1])),
+                       int(paddle.radius), (70, 170, 70), 2, cv2.LINE_AA)
 
-            if not running:
-                draw_text_with_background(frame, f"SÜRE DOLDU - PUAN: {score}",
-                                          (w // 2, h // 2 - 30), scale=3, anchor="center",
-                                          bg_color=(0, 60, 130))
-                draw_text_with_background(frame, "YENİDEN'E BAS", (w // 2, h // 2 + 30),
-                                          scale=2, anchor="center")
-            elif not paddles:
-                draw_text_with_background(frame, "ELLERİNİ KAMERAYA GÖSTER",
-                                          (w // 2, h // 2), scale=2, anchor="center",
-                                          bg_color=(0, 90, 140))
+        for text, px, py, color, _until in popups:
+            draw_text_with_background(frame, text, (int(px), int(py) - 40), scale=3,
+                                      anchor="center", color=color)
 
-            # the holes now run along the bottom edge, so the hint sits up top
-            draw_text_with_background(frame, "KÖSTEBEKLERE VUR - KIRMIZI GÖZLÜLERE DOKUNMA",
-                                      (14, TOOLBAR_H + 26), scale=2, color=(200, 200, 200))
+        for btn in buttons:
+            btn.draw(frame, progress=progress_map.get(btn.id, 0.0),
+                     hovered=dwell.hovered_id() == btn.id)
 
-            cv2.imshow(window_name, frame)
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord('q'):
-                result = "quit"
-            elif key == 27:
-                result = "menu"
-    finally:
-        tracker.close()
+        draw_text_with_background(frame, f"PUAN: {score}", (w // 2, 26), scale=3,
+                                  anchor="center")
+        timer_color = (110, 110, 240) if remaining <= 5 else (200, 200, 200)
+        draw_text_with_background(frame, f"SÜRE: {remaining:4.1f}", (w - 30, 26),
+                                  scale=2, anchor="topright", color=timer_color)
 
+        bar_w = int(w * 0.5)
+        bar_x = (w - bar_w) // 2
+        cv2.rectangle(frame, (bar_x, 64), (bar_x + bar_w, 76), (55, 55, 55), -1)
+        cv2.rectangle(frame, (bar_x, 64),
+                      (bar_x + int(bar_w * remaining / ROUND_SECONDS), 76),
+                      (90, 190, 90) if remaining > 5 else (70, 70, 220), -1)
+
+        if not running:
+            draw_text_with_background(frame, f"SÜRE DOLDU - PUAN: {score}",
+                                      (w // 2, h // 2 - 30), scale=3, anchor="center",
+                                      bg_color=(0, 60, 130))
+            draw_text_with_background(frame, "YENİDEN'E BAS", (w // 2, h // 2 + 30),
+                                      scale=2, anchor="center")
+        elif not paddles:
+            draw_text_with_background(frame, "ELLERİNİ KAMERAYA GÖSTER",
+                                      (w // 2, h // 2), scale=2, anchor="center",
+                                      bg_color=(0, 90, 140))
+
+        # the holes now run along the bottom edge, so the hint sits up top
+        draw_text_with_background(frame, "KÖSTEBEKLERE VUR - KIRMIZI GÖZLÜLERE DOKUNMA",
+                                  (14, TOOLBAR_H + 26), scale=2, color=(200, 200, 200))
+
+        cv2.imshow(window_name, frame)
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
+            result = "quit"
+        elif key == 27:
+            result = "menu"
     return result or "quit"
