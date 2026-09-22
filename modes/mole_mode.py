@@ -257,10 +257,6 @@ def run_mole_mode(cap, window_name, tracker):
 
         draw_text_with_background(frame, f"PUAN: {score}", (w // 2, 26), scale=3,
                                   anchor="center")
-        timer_color = (110, 110, 240) if remaining <= 5 else (200, 200, 200)
-        draw_text_with_background(frame, f"SÜRE: {remaining:4.1f}", (w - 30, 26),
-                                  scale=2, anchor="topright", color=timer_color)
-
         draw_round_timer(frame, remaining / ROUND_SECONDS)
 
         if not running:
@@ -273,10 +269,6 @@ def run_mole_mode(cap, window_name, tracker):
             draw_text_with_background(frame, "ELLERİNİ KAMERAYA GÖSTER",
                                       (w // 2, h // 2), scale=2, anchor="center",
                                       bg_color=(0, 90, 140))
-
-        # the holes now run along the bottom edge, so the hint sits up top
-        draw_text_with_background(frame, "KÖSTEBEKLERE VUR - KIRMIZI GÖZLÜLERE DOKUNMA",
-                                  (14, TOOLBAR_H + 26), scale=2, color=(200, 200, 200))
 
         cv2.imshow(window_name, frame)
         key = cv2.waitKey(1) & 0xFF

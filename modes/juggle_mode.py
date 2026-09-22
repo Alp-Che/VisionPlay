@@ -203,9 +203,6 @@ def run_juggle_mode(cap, window_name, tracker):
                                       (w // 2, h // 2), scale=2, anchor="center",
                                       bg_color=(0, 90, 140))
 
-        draw_text_with_background(frame, "TOPU ELİNLE SEKTİR", (14, h - 44),
-                                  scale=2, color=(200, 200, 200))
-
         cv2.imshow(window_name, frame)
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):

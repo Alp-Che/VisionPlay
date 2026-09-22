@@ -136,10 +136,6 @@ def run_draw_mode(cap, window_name, tracker):
 
         status = f"MOD: {'SİLGİ' if active_mode == 'eraser' else 'FIRÇA'}"
         draw_text_with_background(display, status, (14, h - 44), scale=2)
-        hint = "SAĞ EL: KONUM   SOL EL YUMRUK: ÇİZ"
-        draw_text_with_background(display, hint, (14, h - 90), scale=2,
-                                  color=(200, 200, 200))
-
         cv2.imshow(window_name, display)
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):

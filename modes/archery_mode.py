@@ -412,9 +412,6 @@ def run_archery_mode(cap, window_name, tracker):
             draw_text_with_background(frame, "YENİDEN'E BAS", (w // 2, h // 2 + 30),
                                       scale=2, anchor="center")
 
-        hint = "OK ELİ: YUMRUK YAP, YAYA YAKLAŞTIR, ÇEK, AÇ"
-        draw_text_with_background(frame, hint, (14, h - 44), scale=2, color=(200, 200, 200))
-
         cv2.imshow(window_name, frame)
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):

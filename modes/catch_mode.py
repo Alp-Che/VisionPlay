@@ -101,17 +101,6 @@ def _draw_basket(frame, cx, rim_y, half_w, height):
              (120, 175, 235), 5, cv2.LINE_AA)
 
 
-def _draw_legend(frame, x, y):
-    draw_text_with_background(frame, "PUAN", (x, y), scale=2, color=(200, 200, 200))
-    row = y + 42
-    for name, color, points in ITEM_KINDS + [BLACK_KIND]:
-        cv2.circle(frame, (x + 10, row + 6), 9, color, -1, cv2.LINE_AA)
-        label = f"+{points}" if points > 0 else str(points)
-        draw_text_with_background(frame, label, (x + 34, row), scale=2,
-                                  color=(200, 200, 200) if points > 0 else (110, 110, 240))
-        row += 32
-
-
 def _solo_offset(palm, remembered_palms, remembered_basket, w, default_gap, drop):
     """Where to hang the basket once only one hand is left.
 
@@ -291,8 +280,6 @@ def run_catch_mode(cap, window_name, tracker):
             btn.draw(frame, progress=progress_map.get(btn.id, 0.0),
                      hovered=dwell.hovered_id() == btn.id)
 
-        _draw_legend(frame, 20, TOOLBAR_H + 40)
-
         draw_text_with_background(frame, f"PUAN: {score}", (w // 2, 26), scale=3,
                                   anchor="center")
         draw_round_timer(frame, remaining / ROUND_SECONDS)
@@ -308,9 +295,6 @@ def run_catch_mode(cap, window_name, tracker):
             draw_text_with_background(frame, "İKİ ELİNİ DE GÖSTER",
                                       (w // 2, h // 2), scale=2, anchor="center",
                                       bg_color=(0, 90, 140))
-
-        draw_text_with_background(frame, "SEPET İKİ ELİNİN ARASINDA - SİYAHLARDAN KAÇIN",
-                                  (14, h - 44), scale=2, color=(200, 200, 200))
 
         cv2.imshow(window_name, frame)
         key = cv2.waitKey(1) & 0xFF

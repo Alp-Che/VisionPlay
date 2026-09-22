@@ -293,9 +293,6 @@ def run_ninja_mode(cap, window_name, tracker):
         if now < message_until:
             draw_text_with_background(frame, message, (w // 2, 96), scale=3,
                                       anchor="center", bg_color=(0, 0, 130))
-        draw_text_with_background(frame, "İKİ İŞARET PARMAĞINLA DA KESEBİLİRSİN",
-                                  (14, h - 44), scale=2, color=(200, 200, 200))
-
         cv2.imshow(window_name, frame)
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):
