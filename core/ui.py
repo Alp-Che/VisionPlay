@@ -87,7 +87,7 @@ def _button_art(width, height, color):
     cap = assets.load("ui/button_cap.png")
     middle = assets.load("ui/button_middle.png")
     if cap is None or middle is None or width <= 0 or height <= 0:
-        return None, 0
+        return None, None
 
     zoom = max(1, round(height / cap.shape[0]))
     strip_h = cap.shape[0] * zoom
@@ -129,19 +129,27 @@ def _button_art(width, height, color):
         # where the button's face stops and its shadow begins. A label centred
         # on the whole strip sits low, because the shadow is not part of the
         # face the eye reads.
-        face_h = int(np.argmax(shadow.any(axis=1))) if shadow.any() else art.shape[0]
+        # The box the label lives in: the part actually painted the button's
+        # colour. Not the whole strip -- that takes in the drawn frame and the
+        # shadow under it, and a label fitted to those sits low and small.
+        rows = np.flatnonzero(face.any(axis=1))
+        cols = np.flatnonzero(face.any(axis=0))
+        face_box = ((int(cols[0]), int(rows[0]), int(cols[-1]), int(rows[-1]))
+                    if len(rows) and len(cols) else (0, 0, art.shape[1] - 1, art.shape[0] - 1))
     else:
-        face_h = art.shape[0]
+        face_box = (0, 0, art.shape[1] - 1, art.shape[0] - 1)
 
     if len(_ART_CACHE) > 64:
         _ART_CACHE.clear()
-    _ART_CACHE[key] = (art, face_h)
-    return art, face_h
+    _ART_CACHE[key] = (art, face_box)
+    return art, face_box
 
 
-# room left around a button's label, inside its face
-LABEL_PAD_X = 26
-LABEL_PAD_Y = 14
+# The only room left around a label inside the coloured face: just enough
+# that it does not touch the drawn edge. The label is otherwise as large
+# as that area will take.
+LABEL_PAD_X = 8
+LABEL_PAD_Y = 2
 
 # the plate a score or a notice sits on when it has no colour of its own
 PANEL_COLOR = (46, 41, 35)
@@ -173,13 +181,14 @@ def draw_panel(frame, text, org, scale=2, plate=PANEL_COLOR, anchor="topleft"):
     zoom = max(1, -(-(text_h + 12) // unit_h))
     height = unit_h * zoom
     pad = (cap.shape[1] if cap is not None else 6) * zoom + 6
-    art, face_h = _button_art(text_w + 2 * pad, height, plate)
+    art, face_box = _button_art(text_w + 2 * pad, height, plate)
     if art is None:
         FONT.draw(frame, text, (x, y), scale=scale)
         return
-    art_y = y + text_h // 2 - face_h // 2
+    fx0, fy0, fx1, fy1 = face_box
+    art_y = y + text_h // 2 - (fy0 + fy1) // 2
     assets.overlay(frame, art, x - pad, art_y, art.shape[1], art.shape[0])
-    FONT.draw(frame, text, (x + text_w // 2, art_y + face_h // 2),
+    FONT.draw(frame, text, (x + text_w // 2, art_y + (fy0 + fy1) // 2),
               scale=scale, anchor="center")
 
 
@@ -240,8 +249,9 @@ class Button:
     def draw(self, frame, progress=0.0, hovered=False, selected=False):
         icon_img = assets.load(self.icon) if self.icon else None
 
-        art, face_h = _button_art(self.w, self.h, self.color)
-        label_mid = self.y + self.h // 2
+        art, face_box = _button_art(self.w, self.h, self.color)
+        label_at = (self.x + self.w // 2, self.y + self.h // 2)
+        room = (self.w - LABEL_PAD_X, self.h - LABEL_PAD_Y)
         if icon_img is None:
             if art is None:
                 cv2.rectangle(frame, (self.x, self.y),
@@ -249,7 +259,9 @@ class Button:
             else:
                 art_y = self.y + (self.h - art.shape[0]) // 2
                 assets.overlay(frame, art, self.x, art_y, art.shape[1], art.shape[0])
-                label_mid = art_y + face_h // 2
+                fx0, fy0, fx1, fy1 = face_box
+                label_at = (self.x + (fx0 + fx1) // 2, art_y + (fy0 + fy1) // 2)
+                room = (fx1 - fx0 + 1 - LABEL_PAD_X, fy1 - fy0 + 1 - LABEL_PAD_Y)
 
         # The artwork draws its own edge, so a border is only added as
         # feedback -- green for the one in use, white while a hand is over it.
@@ -271,11 +283,10 @@ class Button:
             scale = 1
             while scale < self.text_scale:
                 width, height = FONT.ink_size(self.label, scale + 1)
-                if width > self.w - LABEL_PAD_X or height > face_h - LABEL_PAD_Y:
+                if width > room[0] or height > room[1]:
                     break
                 scale += 1
-            FONT.draw(frame, self.label, (self.x + self.w // 2, label_mid),
-                      scale=scale, anchor="center")
+            FONT.draw(frame, self.label, label_at, scale=scale, anchor="center")
 
         if hovered and progress > 0:
             self._draw_progress_border(frame, progress)

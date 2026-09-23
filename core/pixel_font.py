@@ -45,11 +45,15 @@ _SHEET_LAYOUT = [
 # out of step. Anything this faint is not ink.
 _INK = 16
 
-# The letters whose tail is meant to fall below the line. Every other glyph is
-# put on the line exactly: the sheet is drawn a pixel out here and there -- A
-# and B reach one row lower than C and D, for instance -- and left alone that
-# shows up as text that will not sit straight.
-DESCENDERS = set("gjpqyçşğÇŞ,;()")
+# The letters whose tail is meant to fall below the line.
+DESCENDERS = set("gjpqyçşğÇŞ")
+
+# Signs that belong on the middle of the small letters rather than on the
+# line. Their own row cannot be measured -- not one glyph in it sits on the
+# line, so there is nothing to take a reading from -- so they are placed
+# against the letters instead, which can be measured.
+MID_SIGNS = set("-+=~<>*^")
+MID_REFERENCE = "o"
 
 
 def _is_face_tone(img, ink):
@@ -119,11 +123,46 @@ def _load_glyphs():
         bottoms = [c[3] for c in cells]
         baseline = max(set(bottoms), key=bottoms.count) + 1
         for ch, glyph, glyph_top, sits_on in cells:
-            if ch in DESCENDERS:
-                glyphs[ch] = (glyph, glyph_top - baseline)
-            else:
-                glyphs[ch] = (glyph, glyph_top - sits_on - 1)
+            # Letters and figures are put on the line exactly: the sheet is
+            # drawn a pixel out here and there -- A and B reach a row lower
+            # than C and D -- and left alone that reads as text that will not
+            # sit straight. Everything else keeps the height it was drawn at,
+            # because for a dash or a plus that height IS the glyph: pulling
+            # their feet down to the line drops them to the floor.
+            snap = (ch.isalpha() or ch.isdigit()) and ch not in DESCENDERS
+            # first row wins: the sheet lists '.' twice, and the second one is
+            # a different mark drawn at a different height
+            glyphs.setdefault(ch, (glyph, glyph_top - sits_on - 1 if snap
+                                   else glyph_top - baseline))
+
+    _centre_signs(glyphs)
     return glyphs
+
+
+def _ink_rows(glyph, offset):
+    rows = np.flatnonzero(glyph[:, :, 3].max(axis=1) > _INK)
+    return offset + int(rows[0]), offset + int(rows[-1])
+
+
+def _centre_signs(glyphs):
+    """Puts a dash, a plus and their like on the middle of the small letters.
+
+    Measured off a lower-case 'o': whatever height the sheet is drawn at, the
+    middle of that letter is where these signs belong.
+    """
+    reference = glyphs.get(MID_REFERENCE)
+    if reference is None:
+        return
+    top, bottom = _ink_rows(*reference)
+    middle = (top + bottom) / 2.0
+    for ch in MID_SIGNS:
+        entry = glyphs.get(ch)
+        if entry is None:
+            continue
+        glyph, offset = entry
+        sign_top, sign_bottom = _ink_rows(glyph, offset)
+        shift = middle - (sign_top + sign_bottom) / 2.0
+        glyphs[ch] = (glyph, offset + int(round(shift)))
 
 
 _CIRCUMFLEX = {"Â": "A", "â": "a", "Î": "İ", "î": "i", "Û": "U", "û": "u"}

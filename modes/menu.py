@@ -52,7 +52,7 @@ def run_menu(cap, window_name, tracker):
         hands = tracker.process(frame)
         clicked, progress_map = dwell.update(hands, all_buttons)
 
-        logo = assets.load("ui/logo_alternatif.png")
+        logo = assets.load("ui/logo.png")
         if logo is not None:
             zoom = integer_scale_for(logo, 155)
             assets.overlay(frame, logo, 30, 20,
