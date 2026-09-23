@@ -155,8 +155,8 @@ class PixelFont:
             x += gw + self.tracking
         return canvas
 
-    def render(self, text, scale, color):
-        key = (text, scale, color)
+    def render(self, text, scale):
+        key = (text, scale)
         cached = self._cache.get(key)
         if cached is not None:
             return cached
@@ -165,9 +165,6 @@ class PixelFont:
         if scale != 1:
             bgra = cv2.resize(bgra, (bgra.shape[1] * scale, bgra.shape[0] * scale),
                               interpolation=cv2.INTER_NEAREST)
-        bgra = bgra.copy()
-        bgra[:, :, 0], bgra[:, :, 1], bgra[:, :, 2] = color[0], color[1], color[2]
-
         if len(self._cache) > 256:
             self._cache.clear()
         self._cache[key] = bgra
@@ -178,15 +175,22 @@ class PixelFont:
         bitmap = self._compose(text) if text else np.zeros((self._height, 1, 4), np.uint8)
         return bitmap.shape[1] * scale, bitmap.shape[0] * scale
 
-    def draw(self, frame, text, org, scale=1, color=(255, 255, 255), anchor="topleft"):
+    def draw(self, frame, text, org, scale=1, anchor="topleft"):
         if not text:
             return
-        bgra = self.render(text, scale, tuple(int(c) for c in color))
+        bgra = self.render(text, scale)
         th, tw = bgra.shape[:2]
         x, y = int(org[0]), int(org[1])
         if anchor == "center":
+            # Centred on the ink, not on the line box. The box keeps room
+            # above every line for the tallest accent and below it for the
+            # deepest tail; centring that pushes ordinary text downwards until
+            # a cedilla drops out of the bottom of a button and reads as a
+            # mark of its own.
+            rows = np.flatnonzero(bgra[:, :, 3].max(axis=1) > 0)
+            top, bottom = (int(rows[0]), int(rows[-1])) if len(rows) else (0, th - 1)
             x -= tw // 2
-            y -= th // 2
+            y -= (top + bottom) // 2
         elif anchor == "topright":
             x -= tw
         elif anchor == "bottomleft":
@@ -206,5 +210,5 @@ class PixelFont:
 FONT = PixelFont(_load_glyphs, tracking=1, space_width=3)
 
 
-def draw_text(frame, text, org, scale=2, color=(255, 255, 255), anchor="topleft", font=FONT):
-    font.draw(frame, text, org, scale=scale, color=color, anchor=anchor)
+def draw_text(frame, text, org, scale=2, anchor="topleft", font=FONT):
+    font.draw(frame, text, org, scale=scale, anchor=anchor)

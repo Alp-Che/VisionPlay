@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 
 from core import assets
+from core.rig import draw_rig
 from core.ui import Button, DwellClickController, draw_panel
 
 TOOLBAR_H = 90
@@ -135,6 +136,8 @@ def run_draw_mode(cap, window_name, tracker):
 
         status = f"MOD: {'SİLGİ' if active_mode == 'eraser' else 'FIRÇA'}"
         draw_panel(display, status, (14, h - 44), scale=2)
+        draw_rig(display, hands)
+
         cv2.imshow(window_name, display)
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):

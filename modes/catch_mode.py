@@ -17,6 +17,7 @@ import numpy as np
 
 from core.paddles import HandPaddles
 from core.pixel_font import draw_text
+from core.rig import draw_rig
 from core.ui import Button, DwellClickController, ROUND_SECONDS, draw_panel, draw_round_timer
 
 TOOLBAR_H = 90
@@ -287,7 +288,7 @@ def run_catch_mode(cap, window_name, tracker):
                                   anchor="center")
         draw_round_timer(frame, remaining / ROUND_SECONDS)
         draw_panel(frame, f"KAÇAN: {dropped}", (w - 30, 26), scale=2,
-                                  anchor="topright", color=(150, 150, 150))
+                                  anchor="topright")
         if not running:
             draw_panel(frame, f"SÜRE DOLDU - PUAN: {score}",
                                       (w // 2, h // 2 - 30), scale=3, anchor="center",
@@ -298,6 +299,9 @@ def run_catch_mode(cap, window_name, tracker):
             draw_panel(frame, "İKİ ELİNİ DE GÖSTER",
                                       (w // 2, h // 2), scale=2, anchor="center",
                                       plate=(0, 90, 140))
+
+        draw_rig(frame, hands)
+
 
         cv2.imshow(window_name, frame)
         key = cv2.waitKey(1) & 0xFF

@@ -23,6 +23,7 @@ from core import assets
 from core.hand_tracker import hand_span
 from core.transform import integer_scale_for, place_rotated
 from core.pixel_font import draw_text
+from core.rig import draw_rig
 from core.ui import Button, DwellClickController, draw_panel
 
 TOOLBAR_H = 90
@@ -394,8 +395,7 @@ def run_archery_mode(cap, window_name, tracker):
         draw_panel(frame, f"SKOR: {total_score}", (w // 2, 26),
                                   scale=3, anchor="center")
         draw_panel(frame, f"OK: {arrows_left}", (w - 30, 26), scale=2,
-                                  anchor="topright",
-                                  color=(150, 150, 150) if arrows_left else (80, 80, 255))
+                                  anchor="topright" if arrows_left else (80, 80, 255))
         if now < message_until:
             draw_panel(frame, message, (w // 2, 90), scale=3, anchor="center",
                                       plate=(0, 130, 0) if "İSABET" in message else (60, 60, 60))
@@ -411,6 +411,9 @@ def run_archery_mode(cap, window_name, tracker):
                                       plate=(0, 60, 130))
             draw_panel(frame, "YENİDEN'E BAS", (w // 2, h // 2 + 30),
                                       scale=2, anchor="center")
+
+        draw_rig(frame, hands)
+
 
         cv2.imshow(window_name, frame)
         key = cv2.waitKey(1) & 0xFF

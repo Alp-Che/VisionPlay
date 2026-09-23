@@ -135,8 +135,7 @@ def _button_art(width, height, color):
 PANEL_COLOR = (46, 41, 35)
 
 
-def draw_panel(frame, text, org, scale=2, color=(235, 235, 235),
-               plate=PANEL_COLOR, anchor="topleft"):
+def draw_panel(frame, text, org, scale=2, plate=PANEL_COLOR, anchor="topleft"):
     """Text on the same drawn plate the buttons use, sized around the text.
 
     Scores and notices sat on plain black rectangles before. Putting them on
@@ -166,7 +165,7 @@ def draw_panel(frame, text, org, scale=2, color=(235, 235, 235),
     if art is not None:
         assets.overlay(frame, art, x - pad, y + text_h // 2 - art.shape[0] // 2,
                        art.shape[1], art.shape[0])
-    FONT.draw(frame, text, (x, y), scale=scale, color=color)
+    FONT.draw(frame, text, (x, y), scale=scale)
 
 
 class _MouseClicks:

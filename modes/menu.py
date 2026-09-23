@@ -21,8 +21,11 @@ def run_menu(cap, window_name, tracker):
         [("archery", "OKÇULUK", (26, 30, 55), 3),
          ("draw", "ÇİZİM", (62, 38, 22), 3),
          ("ninja", "FRUIT NINJA", (30, 52, 30), 2)],
+        # YAKALA is set aside for now -- modes/catch_mode.py is untouched and
+        # main.py still routes to it, so it comes back by putting its line
+        # back here.
         [("juggle", "TOP SEKTİRME", (52, 30, 46), 2),
-         ("catch", "YAKALA", (46, 30, 26), 3),
+         ("pong", "PONG", (26, 44, 44), 3),
          ("mole", "KÖSTEBEK", (30, 44, 56), 3)],
     ]
     btn_w, btn_h, gap = 330, 120, 30
@@ -49,15 +52,13 @@ def run_menu(cap, window_name, tracker):
         hands = tracker.process(frame)
         clicked, progress_map = dwell.update(hands, all_buttons)
 
-        logo = assets.load("ui/logo.png")
+        logo = assets.load("ui/logo_alternatif.png")
         if logo is not None:
             zoom = integer_scale_for(logo, 155)
             assets.overlay(frame, logo, 30, 20,
                            logo.shape[1] * zoom, logo.shape[0] * zoom)
         else:
             draw_text(frame, "VisionPlay", (30, 30), scale=4)
-        draw_text(frame, "ELİNİ BİR MODA GETİR, YUMRUK YAP VE 1 SANİYE BEKLE",
-                  (30, h - 50), scale=2, color=(200, 200, 200))
 
         for btn in all_buttons:
             hovered = dwell.hovered_id() == btn.id

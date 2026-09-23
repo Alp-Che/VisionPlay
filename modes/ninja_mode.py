@@ -18,7 +18,8 @@ import cv2
 
 from core.hand_tracker import hand_span
 from core.paddles import HandPaddles
-from core.ui import Button, DwellClickController, ROUND_SECONDS, draw_panel, draw_round_timer
+from core.rig import draw_rig
+from core.ui import Button, DwellClickController, draw_panel, draw_round_timer
 
 TOOLBAR_H = 90
 
@@ -28,6 +29,10 @@ FINGER_RADIUS_PER_HAND = 0.12
 # Below this the tip is resting, not cutting. Without it a finger parked in
 # the fruits' path would score off every one that fell onto it.
 MIN_SWIPE_FRAC = 0.30     # of frame height per second
+
+# Longer than the shared round: a fruit has to be thrown, rise and fall before
+# it can be cut, so the same twenty seconds buys fewer chances here.
+ROUND_SECONDS = 30.0
 
 GRAVITY = 900.0           # px/s^2
 SPAWN_EVERY = (0.7, 1.6)  # seconds between throws
@@ -280,7 +285,7 @@ def run_ninja_mode(cap, window_name, tracker):
                                   anchor="center")
         draw_round_timer(frame, remaining / ROUND_SECONDS)
         draw_panel(frame, f"KAÇAN: {missed}", (w - 30, 26), scale=2,
-                                  anchor="topright", color=(150, 150, 150))
+                                  anchor="topright")
         if now < flash_until:
             cv2.rectangle(frame, (0, 0), (w, h), (40, 40, 200), 14)
         if not running:
@@ -292,6 +297,8 @@ def run_ninja_mode(cap, window_name, tracker):
         if now < message_until:
             draw_panel(frame, message, (w // 2, 96), scale=3,
                                       anchor="center", plate=(0, 0, 130))
+        draw_rig(frame, hands)
+
         cv2.imshow(window_name, frame)
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):

@@ -17,6 +17,7 @@ from core import assets
 from core.geometry import closest_on_segment
 from core.paddles import HandPaddles
 from core.transform import integer_scale_for, place_rotated
+from core.rig import draw_rig
 from core.ui import Button, DwellClickController, draw_panel
 
 TOOLBAR_H = 90
@@ -193,7 +194,7 @@ def run_juggle_mode(cap, window_name, tracker):
         draw_panel(frame, f"SERİ: {streak}", (w // 2, 26), scale=3,
                                   anchor="center")
         draw_panel(frame, f"REKOR: {best}", (w - 30, 26), scale=2,
-                                  anchor="topright", color=(150, 150, 150))
+                                  anchor="topright")
         if now < message_until:
             draw_panel(frame, message, (w // 2, 92), scale=3,
                                       anchor="center", plate=(0, 110, 0))
@@ -201,6 +202,9 @@ def run_juggle_mode(cap, window_name, tracker):
             draw_panel(frame, "ELLERİNİ KAMERAYA GÖSTER",
                                       (w // 2, h // 2), scale=2, anchor="center",
                                       plate=(0, 90, 140))
+
+        draw_rig(frame, hands)
+
 
         cv2.imshow(window_name, frame)
         key = cv2.waitKey(1) & 0xFF
