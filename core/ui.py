@@ -12,9 +12,10 @@ screen draws, so a round is the same length anywhere and looks the same too.
 import time
 
 import cv2
+import numpy as np
 
 from core import assets
-from core.pixel_font import BUTTON
+from core.pixel_font import FONT
 
 
 # assets/ui/timebar.png is one drawn bar per step of the countdown, laid out
@@ -58,6 +59,59 @@ def draw_round_timer(frame, remaining):
     bar_w, bar_h = step_w * zoom, sheet.shape[0] * zoom
     draw_time_bar(frame, remaining, (w - bar_w) // 2, 50, bar_w, bar_h)
 
+
+
+_ART_CACHE = {}
+
+
+def _button_art(width, height, color):
+    """The button drawn from its three pieces: the cap on the left, the same
+    cap mirrored on the right, and the middle repeated between them.
+
+    Repeating the middle rather than stretching it keeps whatever is drawn in
+    it intact at any width, and the pieces are enlarged by whole numbers so
+    the pixels stay square. The middle's fill is then recoloured to the
+    button's own colour -- that is what lets the menu tell its six games
+    apart -- while the drawn edges are left exactly as drawn.
+    """
+    key = (width, height, color)
+    art = _ART_CACHE.get(key)
+    if art is not None:
+        return art
+
+    cap = assets.load("ui/button_cap.png")
+    middle = assets.load("ui/button_middle.png")
+    if cap is None or middle is None or width <= 0 or height <= 0:
+        return None
+
+    zoom = max(1, round(height / cap.shape[0]))
+    strip_h = cap.shape[0] * zoom
+    cap_w = cap.shape[1] * zoom
+    # the cap is drawn as the right-hand end -- it narrows towards its own
+    # right edge -- so the left end is the same piece mirrored
+    right = cv2.resize(cap, (cap_w, strip_h), interpolation=cv2.INTER_NEAREST)
+    left = right[:, ::-1]
+    body = cv2.resize(middle, (middle.shape[1] * zoom, strip_h),
+                      interpolation=cv2.INTER_NEAREST)
+
+    span = max(1, width - 2 * cap_w)
+    repeats = span // body.shape[1] + 1
+    stretch = np.hstack([body] * repeats)[:, :span]
+    art = np.hstack([left, stretch, right])
+
+    # the fill is whatever the middle is mostly made of
+    opaque = body[body[:, :, 3] > 0][:, :3]
+    if len(opaque):
+        tones, counts = np.unique(opaque, axis=0, return_counts=True)
+        fill = tones[counts.argmax()]
+        same = (art[:, :, :3] == fill).all(axis=2) & (art[:, :, 3] > 0)
+        art = art.copy()
+        art[same, 0], art[same, 1], art[same, 2] = color[0], color[1], color[2]
+
+    if len(_ART_CACHE) > 64:
+        _ART_CACHE.clear()
+    _ART_CACHE[key] = art
+    return art
 
 
 class _MouseClicks:
@@ -118,22 +172,31 @@ class Button:
         icon_img = assets.load(self.icon) if self.icon else None
 
         if icon_img is None:
-            cv2.rectangle(frame, (self.x, self.y), (self.x + self.w, self.y + self.h), self.color, -1)
+            art = _button_art(self.w, self.h, self.color)
+            if art is None:
+                cv2.rectangle(frame, (self.x, self.y),
+                              (self.x + self.w, self.y + self.h), self.color, -1)
+            else:
+                assets.overlay(frame, art, self.x, self.y + (self.h - art.shape[0]) // 2,
+                               art.shape[1], art.shape[0])
 
-        border_color = (255, 255, 255) if hovered else (30, 30, 30)
-        border_thickness = 3 if selected else 2
+        # The artwork draws its own edge, so a border is only added as
+        # feedback -- green for the one in use, white while a hand is over it.
         if selected:
-            border_color = (0, 255, 120)
-        cv2.rectangle(frame, (self.x, self.y), (self.x + self.w, self.y + self.h), border_color, border_thickness)
+            cv2.rectangle(frame, (self.x, self.y),
+                          (self.x + self.w, self.y + self.h), (0, 255, 120), 3)
+        elif hovered:
+            cv2.rectangle(frame, (self.x, self.y),
+                          (self.x + self.w, self.y + self.h), (255, 255, 255), 2)
 
         if icon_img is not None:
             pad = 6
             assets.overlay(frame, icon_img, self.x + pad, self.y + pad, self.w - 2 * pad, self.h - 2 * pad)
         elif self.label:
             scale = self.text_scale
-            while scale > 1 and BUTTON.measure(self.label, scale)[0] > self.w - 14:
+            while scale > 1 and FONT.measure(self.label, scale)[0] > self.w - 14:
                 scale -= 1
-            BUTTON.draw(frame, self.label, self.center(), scale=scale, anchor="center")
+            FONT.draw(frame, self.label, self.center(), scale=scale, anchor="center")
 
         if hovered and progress > 0:
             self._draw_progress_border(frame, progress)
