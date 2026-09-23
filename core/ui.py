@@ -139,6 +139,10 @@ def _button_art(width, height, color):
     return art, face_h
 
 
+# room left around a button's label, inside its face
+LABEL_PAD_X = 26
+LABEL_PAD_Y = 14
+
 # the plate a score or a notice sits on when it has no colour of its own
 PANEL_COLOR = (46, 41, 35)
 
@@ -215,7 +219,7 @@ def attach_mouse(window_name):
 
 
 class Button:
-    def __init__(self, id, label, x, y, w, h, color=(70, 70, 70), icon=None, text_scale=2):
+    def __init__(self, id, label, x, y, w, h, color=(70, 70, 70), icon=None, text_scale=8):
         self.id = id
         self.label = label
         self.x, self.y, self.w, self.h = x, y, w, h
@@ -260,9 +264,16 @@ class Button:
             pad = 6
             assets.overlay(frame, icon_img, self.x + pad, self.y + pad, self.w - 2 * pad, self.h - 2 * pad)
         elif self.label:
-            scale = self.text_scale
-            while scale > 1 and FONT.measure(self.label, scale)[0] > self.w - 14:
-                scale -= 1
+            # As large as the face will take, rather than a size guessed per
+            # button: the labels are different lengths, and a fixed size
+            # leaves the short ones looking shrunken next to the long ones.
+            # text_scale is the ceiling, not the starting point.
+            scale = 1
+            while scale < self.text_scale:
+                width, height = FONT.ink_size(self.label, scale + 1)
+                if width > self.w - LABEL_PAD_X or height > face_h - LABEL_PAD_Y:
+                    break
+                scale += 1
             FONT.draw(frame, self.label, (self.x + self.w // 2, label_mid),
                       scale=scale, anchor="center")
 

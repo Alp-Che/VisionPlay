@@ -16,7 +16,7 @@ def run_start(cap, window_name, tracker):
     h, w = frame.shape[:2] if ret else (720, 1280)
 
     start_btn = Button("menu", "BAŞLA", w // 2 - 170, h // 2 - 40, 340, 130,
-                       color=(30, 52, 30), text_scale=3)
+                       color=(30, 52, 30))
     quit_btn = Button("quit", "ÇIKIŞ", w - 140, 20, 120, 50, color=(38, 38, 38))
     # Leaves the hand rig drawn over every game, for checking what the camera
     # is actually making of a player. It is a session-wide switch, so it is

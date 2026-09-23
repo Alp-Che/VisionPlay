@@ -15,6 +15,7 @@ import cv2
 
 from core import assets
 from core.geometry import closest_on_segment
+from core.hand_tracker import TRACKABLE_HAND_SPEED
 from core.paddles import HandPaddles
 from core.transform import integer_scale_for, place_rotated
 from core.rig import draw_rig
@@ -35,6 +36,12 @@ HAND_RADIUS_FLOOR_FRAC = 0.045   # of frame height
 RISE_FRAC = 0.26
 RISE_TIME = 0.72
 MAX_SPEED_FACTOR = 2.2
+# The longer the rally, the harder the ball falls. The arc keeps the height it
+# was tuned to, so the ball still never leaves the top of the screen; only
+# everything happens quicker. It stops where keeping up would need a hand
+# faster than the tracker can follow.
+FALL_RAMP_PER_HIT = 0.035
+FALL_RAMP_CAP = 1.9
 TOP_MARGIN_FRAC = 0.06      # never let the arc peak above this much of frame
 MIN_BOUNCE_FACTOR = 0.32    # ...but never damp it into a stall either
 RESTITUTION = 0.92
@@ -70,9 +77,19 @@ def run_juggle_mode(cap, window_name, tracker):
     if ball_img is not None:
         ball_r = integer_scale_for(ball_img, ball_r * 2) * max(ball_img.shape[:2]) / 2
     rise = RISE_FRAC * h
-    bounce_speed = 2 * rise / RISE_TIME
-    gravity = bounce_speed / RISE_TIME
-    max_speed = bounce_speed * MAX_SPEED_FACTOR
+    base_bounce = 2 * rise / RISE_TIME
+    base_gravity = base_bounce / RISE_TIME
+    # A rally's pace, worked out from how long it has lasted. Gravity and the
+    # bounce rise together as the square of the ramp and its square root, which
+    # is what leaves the top of the arc exactly where it was: only the time it
+    # takes to get there shrinks.
+    def _pace(hits):
+        ramp = min(1.0 + FALL_RAMP_PER_HIT * hits, FALL_RAMP_CAP)
+        bounce = base_bounce * math.sqrt(ramp)
+        return bounce, base_gravity * ramp, min(bounce * MAX_SPEED_FACTOR,
+                                                TRACKABLE_HAND_SPEED)
+
+    bounce_speed, gravity, max_speed = _pace(0)
     radius_floor = HAND_RADIUS_FLOOR_FRAC * h
 
     hand_paddles = HandPaddles(HAND_RADIUS_PER_SPAN, radius_floor)
@@ -162,8 +179,9 @@ def run_juggle_mode(cap, window_name, tracker):
                 last_bounce = now
                 streak += 1
                 best = max(best, streak)
+                bounce_speed, gravity, max_speed = _pace(streak)
                 if streak and streak % 10 == 0:
-                    message, message_until = f"{streak} SERİ!", now + 1.4
+                    message, message_until = f"{streak} SERİ", now + 1.4
                 break
 
         # ---- dropped ----

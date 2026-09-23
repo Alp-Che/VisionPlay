@@ -235,7 +235,7 @@ def run_ninja_mode(cap, window_name, tracker):
                 halves.extend(_split(fruit, angle))
                 if fruit.get("bomb"):
                     score += BOMB_POINTS
-                    message, message_until = "BOMBA!", now + 1.2
+                    message, message_until = "BOMBA", now + 1.2
                     flash_until = now + 0.18
                 else:
                     score += 1

@@ -51,6 +51,13 @@ class TrackedHand:
 # plausibly have travelled since the last frame: anything beyond that is a
 # different hand, not the same one having teleported.
 MAX_HAND_SPEED = 6000.0      # px/s
+
+# How fast a hand can move and still be followed reliably. Well under the
+# limit above: that one is what a hand can physically do, this is where the
+# picture starts to blur and the model starts dropping it. Games use it as a
+# ceiling on how fast they may make the player move -- a ball the player
+# cannot be tracked chasing is unfair rather than hard.
+TRACKABLE_HAND_SPEED = 1500.0  # px/s
 # How long a place is kept for a hand that has blinked out. Tracking drops for
 # a few frames all the time; handing the controls to a stranger over it would
 # be worse than waiting.

@@ -327,7 +327,7 @@ def run_archery_mode(cap, window_name, tracker):
                 # off the face it is supposed to be stuck in
                 a["stuck_dy"] = cross_y - target_pos[1]
                 total_score += a["score"]
-                message = f"İSABET +{a['score']}" if a["score"] > 0 else "IŞKA"
+                message = f"İSABET +{a['score']}" if a["score"] > 0 else "ISKA"
                 message_until = now + 1.6
             elif a["y"] > h + 40:
                 a["landed"] = True

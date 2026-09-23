@@ -253,7 +253,7 @@ def run_mole_mode(cap, window_name, tracker):
             # whatever is moving, and a box drawn to make them readable ends
             # up the loudest thing on screen
             draw_text(frame, text, (int(px), int(py) - 40), scale=3,
-                      anchor="center", color=color)
+                      anchor="center")
 
         for btn in buttons:
             btn.draw(frame, progress=progress_map.get(btn.id, 0.0),

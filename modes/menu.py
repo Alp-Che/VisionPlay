@@ -18,15 +18,15 @@ def run_menu(cap, window_name, tracker):
     # Backgrounds stay dark and low-saturation, because the button font keeps
     # its own mid-green artwork and that vanishes on anything lighter.
     rows = [
-        [("archery", "OKÇULUK", (26, 30, 55), 3),
-         ("draw", "ÇİZİM", (62, 38, 22), 3),
-         ("ninja", "FRUIT NINJA", (30, 52, 30), 2)],
+        [("archery", "OKÇULUK", (26, 30, 55)),
+         ("draw", "ÇİZİM", (62, 38, 22)),
+         ("ninja", "FRUIT NINJA", (30, 52, 30))],
         # YAKALA is set aside for now -- modes/catch_mode.py is untouched and
         # main.py still routes to it, so it comes back by putting its line
         # back here.
-        [("juggle", "TOP SEKTİRME", (52, 30, 46), 2),
-         ("pong", "PONG", (26, 44, 44), 3),
-         ("mole", "KÖSTEBEK", (30, 44, 56), 3)],
+        [("juggle", "TOP SEKTİRME", (52, 30, 46)),
+         ("pong", "PONG", (26, 44, 44)),
+         ("mole", "KÖSTEBEK", (30, 44, 56))],
     ]
     btn_w, btn_h, gap = 330, 120, 30
     top = h // 2 - (btn_h * len(rows) + gap * (len(rows) - 1)) // 2
@@ -35,9 +35,9 @@ def run_menu(cap, window_name, tracker):
     for r, row in enumerate(rows):
         row_x = (w - (btn_w * len(row) + gap * (len(row) - 1))) // 2
         y = top + r * (btn_h + gap)
-        for c, (ident, label, color, scale) in enumerate(row):
+        for c, (ident, label, color) in enumerate(row):
             buttons.append(Button(ident, label, row_x + c * (btn_w + gap), y,
-                                  btn_w, btn_h, color=color, text_scale=scale))
+                                  btn_w, btn_h, color=color))
 
     quit_btn = Button("start", "GERİ", w - 140, 20, 120, 50, color=(38, 38, 38))
     all_buttons = buttons + [quit_btn]

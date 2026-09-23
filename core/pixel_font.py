@@ -45,6 +45,25 @@ _SHEET_LAYOUT = [
 # out of step. Anything this faint is not ink.
 _INK = 16
 
+# The letters whose tail is meant to fall below the line. Every other glyph is
+# put on the line exactly: the sheet is drawn a pixel out here and there -- A
+# and B reach one row lower than C and D, for instance -- and left alone that
+# shows up as text that will not sit straight.
+DESCENDERS = set("gjpqyçşğÇŞ,;()")
+
+
+def _is_face_tone(img, ink):
+    """True where the sheet is the lettering rather than its shadow.
+
+    The face is simply whichever tone there is most of; the shadow is drawn in
+    a darker one and always covers less ground.
+    """
+    tones, counts = np.unique(img[ink][:, :3], axis=0, return_counts=True)
+    if not len(tones):
+        return ink
+    face = tones[counts.argmax()]
+    return (img[:, :, :3] == face).all(axis=2)
+
 
 def _runs(flags):
     """Start and end of each unbroken run of True."""
@@ -63,36 +82,47 @@ def _runs(flags):
 def _load_glyphs():
     """Carves fonts.png into glyphs, one row of the layout at a time.
 
-    Rows and glyphs are found from the gaps between them. The line each row
-    sits on is taken to be wherever most of its glyphs end: in any row of
-    eight only a couple descend, so the majority is the baseline. Each glyph
-    then remembers how far it sits above or below that line, which is what
-    keeps a 'g' hanging and an 'İ' dotted when the text is laid out.
+    Rows and glyphs are found from the gaps between them. The line a row sits
+    on is wherever most of its letters end: in a row of eight only a couple
+    descend, so the majority is the baseline. Each glyph then remembers how
+    far above or below that line it starts, which is what keeps a 'g' hanging
+    and an 'İ' dotted once the text is laid out.
+
+    The letters are drawn with a shadow a pixel under them, in a darker tone.
+    The baseline is measured from the lettering alone: counting the shadow as
+    part of the letter puts every glyph that has one a pixel lower than every
+    glyph that does not, which is exactly the wobble it looks like.
     """
     img = _imread_unicode(SHEET_PATH)
     if img is None:
         return {}
     ink = img[:, :, 3] > _INK
+    lettering = ink & _is_face_tone(img, ink)
 
     glyphs = {}
     for row, (top, bottom) in enumerate(_runs(ink.sum(axis=1) > 0)):
         if row >= len(_SHEET_LAYOUT):
             break
-        band = ink[top:bottom + 1]
+        band, faces = ink[top:bottom + 1], lettering[top:bottom + 1]
         cells = []
         for column, (x0, x1) in enumerate(_runs(band.sum(axis=0) > 0)):
             if column >= len(_SHEET_LAYOUT[row]):
                 break
             ys = np.flatnonzero(band[:, x0:x1 + 1].sum(axis=1) > 0)
+            face_ys = np.flatnonzero(faces[:, x0:x1 + 1].sum(axis=1) > 0)
+            sits_on = int(face_ys[-1]) if len(face_ys) else int(ys[-1])
             cells.append((_SHEET_LAYOUT[row][column],
                           img[top + ys[0]:top + ys[-1] + 1, x0:x1 + 1],
-                          top + ys[0], top + ys[-1]))
+                          top + int(ys[0]), top + sits_on))
         if not cells:
             continue
         bottoms = [c[3] for c in cells]
         baseline = max(set(bottoms), key=bottoms.count) + 1
-        for ch, glyph, glyph_top, _ in cells:
-            glyphs[ch] = (glyph, glyph_top - baseline)
+        for ch, glyph, glyph_top, sits_on in cells:
+            if ch in DESCENDERS:
+                glyphs[ch] = (glyph, glyph_top - baseline)
+            else:
+                glyphs[ch] = (glyph, glyph_top - sits_on - 1)
     return glyphs
 
 
@@ -169,6 +199,18 @@ class PixelFont:
             self._cache.clear()
         self._cache[key] = bgra
         return bgra
+
+    def ink_size(self, text, scale=1):
+        """Width, and the height of the inked rows alone.
+
+        The line box keeps room above every line for the tallest accent and
+        below it for the deepest tail, which most strings never use. Fitting a
+        label to the box instead of to its ink leaves it needlessly small.
+        """
+        bgra = self.render(text, scale)
+        rows = np.flatnonzero(bgra[:, :, 3].max(axis=1) > 0)
+        height = int(rows[-1] - rows[0]) + 1 if len(rows) else 0
+        return bgra.shape[1], height
 
     def measure(self, text, scale=1):
         self.glyphs  # ensure metrics are loaded

@@ -17,6 +17,8 @@ import time
 
 import cv2
 
+from core.hand_tracker import TRACKABLE_HAND_SPEED
+from core.paddles import HandPaddles
 from core.rig import draw_rig
 from core.ui import Button, DwellClickController, draw_panel
 
@@ -28,8 +30,13 @@ BAT_HEIGHT_FRAC = 0.24       # of frame height
 BALL_RADIUS_FRAC = 0.022     # of frame height
 
 BALL_START_SPEED_FRAC = 0.62  # of frame height per second
-BALL_SPEEDUP = 1.04          # each return makes it a little quicker
-BALL_MAX_SPEED_FRAC = 1.5
+BALL_SPEEDUP = 1.05          # each return makes it a little quicker
+# Where the speeding up stops. Between returns the ball crosses the court, and
+# in that time a player may have to take the bat the whole height of it, so
+# the hand speed the ball demands is its own speed times height over width.
+# Past what the tracker can follow the game stops being hard and starts being
+# broken, so that is the ceiling.
+BALL_MAX_HAND_DEMAND = TRACKABLE_HAND_SPEED
 # How much of the bounce angle the contact point decides: hit the end of the
 # bat and the ball leaves at a steeper angle than off the middle.
 MAX_BOUNCE_ANGLE = math.radians(52)
@@ -60,19 +67,24 @@ def _serve(w, h, towards):
     }
 
 
-def _bat_targets(hands, w):
+def _bat_targets(tracked, w):
     """Which hand drives which bat, by where the hands are, not what they are.
 
-    Two or more hands: the leftmost takes the left bat, the rightmost the
-    right. One hand: it takes the bat on the side of the picture it is in.
+    Two or more: the leftmost takes the left bat, the rightmost the right.
+    One: it takes the bat on the side of the picture it is in.
+
+    `tracked` comes from HandPaddles rather than straight from the tracker, so
+    a hand lost in the middle of a sudden move carries on the way it was going
+    for a moment instead of the bat stopping dead. That is exactly when
+    tracking gives out -- a hand moving hard is a blurred hand.
     """
-    if not hands:
+    if not tracked:
         return None, None
-    ordered = sorted(hands, key=lambda hd: hd.landmarks_px[9][0])
+    ordered = sorted(tracked, key=lambda p: p.end[0])
     if len(ordered) == 1:
-        only = ordered[0].landmarks_px[9]
+        only = ordered[0].end
         return (only[1], None) if only[0] < w / 2 else (None, only[1])
-    return ordered[0].landmarks_px[9][1], ordered[-1].landmarks_px[9][1]
+    return ordered[0].end[1], ordered[-1].end[1]
 
 
 def _ball_tones(brightness):
@@ -107,7 +119,7 @@ def run_pong_mode(cap, window_name, tracker):
     bat_w = max(6, int(BAT_WIDTH_FRAC * w))
     bat_h = BAT_HEIGHT_FRAC * h
     ball_r = int(BALL_RADIUS_FRAC * h)
-    max_speed = BALL_MAX_SPEED_FRAC * h
+    max_speed = BALL_MAX_HAND_DEMAND * w / h
     inset = BAT_INSET_FRAC * w
     top, bottom = TOOLBAR_H + ball_r, h - ball_r
 
@@ -117,6 +129,8 @@ def run_pong_mode(cap, window_name, tracker):
     ball = _serve(w, h, random.choice((-1, 1)))
     serve_at = time.time() + SERVE_DELAY
     last_time = time.time()
+    # coast=True: a bat carries on through a dropout rather than freezing
+    bat_tracker = HandPaddles(1.0, 1.0, coast=True)
     backdrop = 128.0             # how bright the room is, eased frame to frame
 
     result = None
@@ -141,7 +155,7 @@ def run_pong_mode(cap, window_name, tracker):
             serve_at = now + SERVE_DELAY
 
         # --- bats follow their hands ---
-        left_y, right_y = _bat_targets(hands, w)
+        left_y, right_y = _bat_targets(bat_tracker.update(hands, now, dt), w)
         for i, target in enumerate((left_y, right_y)):
             if target is not None:
                 bats[i] = min(max(float(target), TOOLBAR_H + bat_h / 2), h - bat_h / 2)
