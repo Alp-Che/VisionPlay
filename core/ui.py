@@ -9,12 +9,14 @@ standing at the keyboard anyway.
 Also here: how long a timed round lasts and the countdown bar every such
 screen draws, so a round is the same length anywhere and looks the same too.
 """
+import math
 import time
 
 import cv2
 import numpy as np
 
 from core import assets
+from core.hand_tracker import hand_span
 from core.pixel_font import FONT
 
 
@@ -78,14 +80,14 @@ def _button_art(width, height, color):
     apart -- while the drawn edges are left exactly as drawn.
     """
     key = (width, height, color)
-    art = _ART_CACHE.get(key)
-    if art is not None:
-        return art
+    cached = _ART_CACHE.get(key)
+    if cached is not None:
+        return cached
 
     cap = assets.load("ui/button_cap.png")
     middle = assets.load("ui/button_middle.png")
     if cap is None or middle is None or width <= 0 or height <= 0:
-        return None
+        return None, 0
 
     zoom = max(1, round(height / cap.shape[0]))
     strip_h = cap.shape[0] * zoom
@@ -124,11 +126,17 @@ def _button_art(width, height, color):
         art[shadow, 0] = int(color[0] * SHADOW_TONE)
         art[shadow, 1] = int(color[1] * SHADOW_TONE)
         art[shadow, 2] = int(color[2] * SHADOW_TONE)
+        # where the button's face stops and its shadow begins. A label centred
+        # on the whole strip sits low, because the shadow is not part of the
+        # face the eye reads.
+        face_h = int(np.argmax(shadow.any(axis=1))) if shadow.any() else art.shape[0]
+    else:
+        face_h = art.shape[0]
 
     if len(_ART_CACHE) > 64:
         _ART_CACHE.clear()
-    _ART_CACHE[key] = art
-    return art
+    _ART_CACHE[key] = (art, face_h)
+    return art, face_h
 
 
 # the plate a score or a notice sits on when it has no colour of its own
@@ -161,11 +169,14 @@ def draw_panel(frame, text, org, scale=2, plate=PANEL_COLOR, anchor="topleft"):
     zoom = max(1, -(-(text_h + 12) // unit_h))
     height = unit_h * zoom
     pad = (cap.shape[1] if cap is not None else 6) * zoom + 6
-    art = _button_art(text_w + 2 * pad, height, plate)
-    if art is not None:
-        assets.overlay(frame, art, x - pad, y + text_h // 2 - art.shape[0] // 2,
-                       art.shape[1], art.shape[0])
-    FONT.draw(frame, text, (x, y), scale=scale)
+    art, face_h = _button_art(text_w + 2 * pad, height, plate)
+    if art is None:
+        FONT.draw(frame, text, (x, y), scale=scale)
+        return
+    art_y = y + text_h // 2 - face_h // 2
+    assets.overlay(frame, art, x - pad, art_y, art.shape[1], art.shape[0])
+    FONT.draw(frame, text, (x + text_w // 2, art_y + face_h // 2),
+              scale=scale, anchor="center")
 
 
 class _MouseClicks:
@@ -225,14 +236,16 @@ class Button:
     def draw(self, frame, progress=0.0, hovered=False, selected=False):
         icon_img = assets.load(self.icon) if self.icon else None
 
+        art, face_h = _button_art(self.w, self.h, self.color)
+        label_mid = self.y + self.h // 2
         if icon_img is None:
-            art = _button_art(self.w, self.h, self.color)
             if art is None:
                 cv2.rectangle(frame, (self.x, self.y),
                               (self.x + self.w, self.y + self.h), self.color, -1)
             else:
-                assets.overlay(frame, art, self.x, self.y + (self.h - art.shape[0]) // 2,
-                               art.shape[1], art.shape[0])
+                art_y = self.y + (self.h - art.shape[0]) // 2
+                assets.overlay(frame, art, self.x, art_y, art.shape[1], art.shape[0])
+                label_mid = art_y + face_h // 2
 
         # The artwork draws its own edge, so a border is only added as
         # feedback -- green for the one in use, white while a hand is over it.
@@ -250,7 +263,8 @@ class Button:
             scale = self.text_scale
             while scale > 1 and FONT.measure(self.label, scale)[0] > self.w - 14:
                 scale -= 1
-            FONT.draw(frame, self.label, self.center(), scale=scale, anchor="center")
+            FONT.draw(frame, self.label, (self.x + self.w // 2, label_mid),
+                      scale=scale, anchor="center")
 
         if hovered and progress > 0:
             self._draw_progress_border(frame, progress)
@@ -272,6 +286,12 @@ class Button:
             remaining -= length
 
 
+# A hand that is being swung is playing, not pointing. While it is moving
+# faster than this the dwell will not start, so a swat that happens to pass
+# over a button with a closed fist cannot arm a press. Measured in the hand's
+# own widths per second, so it means the same at any distance from the camera.
+STEADY_SPANS_PER_SECOND = 6.0
+
 # How long a fist must be held to count as a click. Long enough that a hand
 # passing over a button doesn't press it, short enough not to be a chore --
 # every screen takes it from here, so this is the only line to change.
@@ -287,6 +307,21 @@ class DwellClickController:
         self._target_id = None
         self._start_time = None
         self._latched = False
+        self._was_at = None
+        self._was_when = None
+        # a click made before this screen existed is not meant for it
+        MOUSE.take()
+
+    def _settled(self, hand):
+        """Is this hand being held still enough to mean it?"""
+        now = time.time()
+        at = hand.index_tip
+        was_at, was_when = self._was_at, self._was_when
+        self._was_at, self._was_when = at, now
+        if was_at is None or was_when is None or now <= was_when:
+            return False              # nothing to compare against yet
+        moved = math.dist(at, was_at) / (now - was_when)
+        return moved <= STEADY_SPANS_PER_SECOND * max(hand_span(hand), 1.0)
 
     def update(self, hands, buttons):
         progress_map = {}
@@ -304,11 +339,13 @@ class DwellClickController:
 
         hover_id = None
         hover_closed = False
+        hover_hand = None
         for hand in hands:
             for btn in buttons:
                 if btn.contains(hand.index_tip):
                     hover_id = btn.id
                     hover_closed = hover_closed or hand.closed
+                    hover_hand = hand
                     break
             if hover_id is not None:
                 break
@@ -317,6 +354,14 @@ class DwellClickController:
             self._target_id = None
             self._start_time = None
             self._latched = False
+            self._was_at = None
+            return None, progress_map
+
+        steady = self._settled(hover_hand)
+        if not steady:
+            self._start_time = None
+            self._latched = False
+            progress_map[hover_id] = 0.0
             return None, progress_map
 
         if hover_id != self._target_id:

@@ -1,4 +1,5 @@
-"""Pong, for two people standing side by side.
+"""Pong, for two people standing side by side. It has no clock: it runs until
+somebody presses MENU, which is what a game two people take turns at wants.
 
 Each player moves the bat on their own side with one hand. Which bat a hand
 gets is decided by where it is: with two hands in view the leftmost takes the
@@ -17,7 +18,7 @@ import time
 import cv2
 
 from core.rig import draw_rig
-from core.ui import ROUND_SECONDS, Button, DwellClickController, draw_panel, draw_round_timer
+from core.ui import Button, DwellClickController, draw_panel
 
 TOOLBAR_H = 90
 
@@ -34,7 +35,15 @@ BALL_MAX_SPEED_FRAC = 1.5
 MAX_BOUNCE_ANGLE = math.radians(52)
 SERVE_DELAY = 0.7            # a pause after a point, so it can be seen
 
-BALL_COLOR = (235, 235, 235)
+# The ball is drawn against whatever the camera is pointing at, which is a
+# room, not a chosen backdrop. Its colour is picked from that picture each
+# frame: light ball on a dark room, dark ball on a bright one. The reading is
+# eased over time, so someone walking past cannot make it flicker.
+BALL_LIGHT = (245, 245, 245)
+BALL_DARK = (25, 25, 30)
+BALL_RIM_MIX = 0.55          # the outline, halfway to the opposite tone
+BACKDROP_SMOOTHING = 0.06
+
 BAT_COLORS = ((120, 200, 120), (120, 160, 240))
 COURT_COLOR = (90, 90, 90)
 
@@ -64,6 +73,16 @@ def _bat_targets(hands, w):
         only = ordered[0].landmarks_px[9]
         return (only[1], None) if only[0] < w / 2 else (None, only[1])
     return ordered[0].landmarks_px[9][1], ordered[-1].landmarks_px[9][1]
+
+
+def _ball_tones(brightness):
+    """The ball and its outline, for a backdrop of this brightness."""
+    if brightness < 128:
+        ball, other = BALL_LIGHT, BALL_DARK
+    else:
+        ball, other = BALL_DARK, BALL_LIGHT
+    rim = tuple(int(b + (o - b) * BALL_RIM_MIX) for b, o in zip(ball, other))
+    return ball, rim
 
 
 def _draw_court(frame, w, h):
@@ -97,8 +116,8 @@ def run_pong_mode(cap, window_name, tracker):
     scores = [0, 0]
     ball = _serve(w, h, random.choice((-1, 1)))
     serve_at = time.time() + SERVE_DELAY
-    round_start = time.time()
     last_time = time.time()
+    backdrop = 128.0             # how bright the room is, eased frame to frame
 
     result = None
     while result is None:
@@ -120,10 +139,6 @@ def run_pong_mode(cap, window_name, tracker):
             scores = [0, 0]
             ball = _serve(w, h, random.choice((-1, 1)))
             serve_at = now + SERVE_DELAY
-            round_start = now
-
-        remaining = max(ROUND_SECONDS - (now - round_start), 0.0)
-        running = remaining > 0
 
         # --- bats follow their hands ---
         left_y, right_y = _bat_targets(hands, w)
@@ -132,7 +147,7 @@ def run_pong_mode(cap, window_name, tracker):
                 bats[i] = min(max(float(target), TOOLBAR_H + bat_h / 2), h - bat_h / 2)
 
         # --- the ball, in small steps so a bat cannot be passed through ---
-        if running and now >= serve_at:
+        if now >= serve_at:
             travel = math.hypot(ball["vx"], ball["vy"]) * dt
             steps = max(1, int(travel / (bat_w * 0.5)) + 1)
             for _ in range(steps):
@@ -172,6 +187,13 @@ def run_pong_mode(cap, window_name, tracker):
                     break
 
         # ================= draw =================
+        # every eighth pixel is plenty to tell a dark room from a bright one
+        patch = frame[TOOLBAR_H::8, ::8]
+        measured = float(patch[:, :, 0].mean() * 0.114 + patch[:, :, 1].mean() * 0.587
+                         + patch[:, :, 2].mean() * 0.299)
+        backdrop += (measured - backdrop) * BACKDROP_SMOOTHING
+        ball_color, rim_color = _ball_tones(backdrop)
+
         _draw_court(frame, w, h)
         for i in (0, 1):
             y0 = int(bats[i] - bat_h / 2)
@@ -179,31 +201,21 @@ def run_pong_mode(cap, window_name, tracker):
                           (int(bat_x[i]) + bat_w, int(y0 + bat_h)),
                           BAT_COLORS[i], -1, cv2.LINE_AA)
         cv2.circle(frame, (int(ball["x"]), int(ball["y"])), ball_r,
-                   BALL_COLOR, -1, cv2.LINE_AA)
+                   ball_color, -1, cv2.LINE_AA)
+        cv2.circle(frame, (int(ball["x"]), int(ball["y"])), ball_r,
+                   rim_color, 2, cv2.LINE_AA)
 
         for btn in buttons:
             btn.draw(frame, progress=progress_map.get(btn.id, 0.0),
                      hovered=dwell.hovered_id() == btn.id)
 
-        draw_round_timer(frame, remaining / ROUND_SECONDS)
-        # each score on its own player's side, and below the bar rather than
-        # beside it -- the bar is wide enough to reach the middle of the top
-        draw_panel(frame, str(scores[0]), (int(w * 0.28), TOOLBAR_H + 60),
+        # each score on its own player's side
+        draw_panel(frame, str(scores[0]), (int(w * 0.28), TOOLBAR_H + 50),
                    scale=5, anchor="center")
-        draw_panel(frame, str(scores[1]), (int(w * 0.72), TOOLBAR_H + 60),
+        draw_panel(frame, str(scores[1]), (int(w * 0.72), TOOLBAR_H + 50),
                    scale=5, anchor="center")
 
-        if not running:
-            if scores[0] == scores[1]:
-                sonuc = f"BERABERE {scores[0]} - {scores[1]}"
-            else:
-                kazanan = "SOL" if scores[0] > scores[1] else "SAĞ"
-                sonuc = f"{kazanan} KAZANDI {max(scores)} - {min(scores)}"
-            draw_panel(frame, sonuc, (w // 2, h // 2 - 30), scale=3, anchor="center",
-                       plate=(0, 60, 130))
-            draw_panel(frame, "YENİDEN DÜĞMESİNE BAS", (w // 2, h // 2 + 30),
-                       scale=2, anchor="center")
-        elif not hands:
+        if not hands:
             draw_panel(frame, "ELLERİNİZİ KAMERAYA GÖSTERİN", (w // 2, h // 2),
                        scale=2, anchor="center", plate=(0, 90, 140))
 
