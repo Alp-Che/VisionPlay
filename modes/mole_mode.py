@@ -15,8 +15,8 @@ import cv2
 from core import assets
 from core.geometry import closest_on_segment
 from core.paddles import HandPaddles
-from core.pixel_font import draw_text_with_background
-from core.ui import ROUND_SECONDS, Button, DwellClickController, draw_round_timer
+from core.pixel_font import draw_text
+from core.ui import Button, DwellClickController, ROUND_SECONDS, draw_panel, draw_round_timer
 
 TOOLBAR_H = 90
 
@@ -248,27 +248,30 @@ def run_mole_mode(cap, window_name, tracker):
                        int(paddle.radius), (70, 170, 70), 2, cv2.LINE_AA)
 
         for text, px, py, color, _until in popups:
-            draw_text_with_background(frame, text, (int(px), int(py) - 40), scale=3,
-                                      anchor="center", color=color)
+            # no plate behind these: they are up for less than a second over
+            # whatever is moving, and a box drawn to make them readable ends
+            # up the loudest thing on screen
+            draw_text(frame, text, (int(px), int(py) - 40), scale=3,
+                      anchor="center", color=color)
 
         for btn in buttons:
             btn.draw(frame, progress=progress_map.get(btn.id, 0.0),
                      hovered=dwell.hovered_id() == btn.id)
 
-        draw_text_with_background(frame, f"PUAN: {score}", (w // 2, 26), scale=3,
+        draw_panel(frame, f"PUAN: {score}", (w // 2, 26), scale=3,
                                   anchor="center")
         draw_round_timer(frame, remaining / ROUND_SECONDS)
 
         if not running:
-            draw_text_with_background(frame, f"SÜRE DOLDU - PUAN: {score}",
+            draw_panel(frame, f"SÜRE DOLDU - PUAN: {score}",
                                       (w // 2, h // 2 - 30), scale=3, anchor="center",
-                                      bg_color=(0, 60, 130))
-            draw_text_with_background(frame, "YENİDEN DÜĞMESİNE BAS", (w // 2, h // 2 + 30),
+                                      plate=(0, 60, 130))
+            draw_panel(frame, "YENİDEN DÜĞMESİNE BAS", (w // 2, h // 2 + 30),
                                       scale=2, anchor="center")
         elif not paddles:
-            draw_text_with_background(frame, "ELLERİNİ KAMERAYA GÖSTER",
+            draw_panel(frame, "ELLERİNİ KAMERAYA GÖSTER",
                                       (w // 2, h // 2), scale=2, anchor="center",
-                                      bg_color=(0, 90, 140))
+                                      plate=(0, 90, 140))
 
         cv2.imshow(window_name, frame)
         key = cv2.waitKey(1) & 0xFF

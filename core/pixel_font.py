@@ -208,19 +208,3 @@ FONT = PixelFont(_load_glyphs, tracking=1, space_width=3)
 
 def draw_text(frame, text, org, scale=2, color=(255, 255, 255), anchor="topleft", font=FONT):
     font.draw(frame, text, org, scale=scale, color=color, anchor=anchor)
-
-
-def draw_text_with_background(frame, text, org, scale=2, color=(255, 255, 255),
-                               bg_color=(0, 0, 0), padding=6, anchor="topleft", font=FONT):
-    tw, th = font.measure(text, scale)
-    x, y = int(org[0]), int(org[1])
-    if anchor == "center":
-        x -= tw // 2
-        y -= th // 2
-    elif anchor == "topright":
-        x -= tw
-    elif anchor == "bottomleft":
-        y -= th
-    cv2.rectangle(frame, (x - padding, y - padding), (x + tw + padding, y + th + padding),
-                  bg_color, -1)
-    font.draw(frame, text, (x, y), scale=scale, color=color)

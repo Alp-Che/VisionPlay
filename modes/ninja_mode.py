@@ -18,8 +18,7 @@ import cv2
 
 from core.hand_tracker import hand_span
 from core.paddles import HandPaddles
-from core.pixel_font import draw_text_with_background
-from core.ui import ROUND_SECONDS, Button, DwellClickController, draw_round_timer
+from core.ui import Button, DwellClickController, ROUND_SECONDS, draw_panel, draw_round_timer
 
 TOOLBAR_H = 90
 
@@ -277,22 +276,22 @@ def run_ninja_mode(cap, window_name, tracker):
             btn.draw(frame, progress=progress_map.get(btn.id, 0.0),
                      hovered=dwell.hovered_id() == btn.id)
 
-        draw_text_with_background(frame, f"SKOR: {score}", (w // 2, 26), scale=3,
+        draw_panel(frame, f"SKOR: {score}", (w // 2, 26), scale=3,
                                   anchor="center")
         draw_round_timer(frame, remaining / ROUND_SECONDS)
-        draw_text_with_background(frame, f"KAÇAN: {missed}", (w - 30, 26), scale=2,
+        draw_panel(frame, f"KAÇAN: {missed}", (w - 30, 26), scale=2,
                                   anchor="topright", color=(150, 150, 150))
         if now < flash_until:
             cv2.rectangle(frame, (0, 0), (w, h), (40, 40, 200), 14)
         if not running:
-            draw_text_with_background(frame, f"SÜRE DOLDU - SKOR: {score}",
+            draw_panel(frame, f"SÜRE DOLDU - SKOR: {score}",
                                       (w // 2, h // 2 - 30), scale=3, anchor="center",
-                                      bg_color=(0, 60, 130))
-            draw_text_with_background(frame, "YENİDEN DÜĞMESİNE BAS", (w // 2, h // 2 + 30),
+                                      plate=(0, 60, 130))
+            draw_panel(frame, "YENİDEN DÜĞMESİNE BAS", (w // 2, h // 2 + 30),
                                       scale=2, anchor="center")
         if now < message_until:
-            draw_text_with_background(frame, message, (w // 2, 96), scale=3,
-                                      anchor="center", bg_color=(0, 0, 130))
+            draw_panel(frame, message, (w // 2, 96), scale=3,
+                                      anchor="center", plate=(0, 0, 130))
         cv2.imshow(window_name, frame)
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):

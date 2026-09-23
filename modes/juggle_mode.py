@@ -16,9 +16,8 @@ import cv2
 from core import assets
 from core.geometry import closest_on_segment
 from core.paddles import HandPaddles
-from core.pixel_font import draw_text_with_background
 from core.transform import integer_scale_for, place_rotated
-from core.ui import Button, DwellClickController
+from core.ui import Button, DwellClickController, draw_panel
 
 TOOLBAR_H = 90
 
@@ -191,17 +190,17 @@ def run_juggle_mode(cap, window_name, tracker):
             btn.draw(frame, progress=progress_map.get(btn.id, 0.0),
                      hovered=dwell.hovered_id() == btn.id)
 
-        draw_text_with_background(frame, f"SERİ: {streak}", (w // 2, 26), scale=3,
+        draw_panel(frame, f"SERİ: {streak}", (w // 2, 26), scale=3,
                                   anchor="center")
-        draw_text_with_background(frame, f"REKOR: {best}", (w - 30, 26), scale=2,
+        draw_panel(frame, f"REKOR: {best}", (w - 30, 26), scale=2,
                                   anchor="topright", color=(150, 150, 150))
         if now < message_until:
-            draw_text_with_background(frame, message, (w // 2, 92), scale=3,
-                                      anchor="center", bg_color=(0, 110, 0))
+            draw_panel(frame, message, (w // 2, 92), scale=3,
+                                      anchor="center", plate=(0, 110, 0))
         if not paddles:
-            draw_text_with_background(frame, "ELLERİNİ KAMERAYA GÖSTER",
+            draw_panel(frame, "ELLERİNİ KAMERAYA GÖSTER",
                                       (w // 2, h // 2), scale=2, anchor="center",
-                                      bg_color=(0, 90, 140))
+                                      plate=(0, 90, 140))
 
         cv2.imshow(window_name, frame)
         key = cv2.waitKey(1) & 0xFF

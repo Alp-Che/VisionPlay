@@ -61,6 +61,9 @@ def draw_round_timer(frame, remaining):
 
 
 
+# how dark the strip under a button goes, against its own colour
+SHADOW_TONE = 0.45
+
 _ART_CACHE = {}
 
 
@@ -104,14 +107,66 @@ def _button_art(width, height, color):
     if len(opaque):
         tones, counts = np.unique(opaque, axis=0, return_counts=True)
         fill = tones[counts.argmax()]
-        same = (art[:, :, :3] == fill).all(axis=2) & (art[:, :, 3] > 0)
         art = art.copy()
-        art[same, 0], art[same, 1], art[same, 2] = color[0], color[1], color[2]
+        is_fill = (art[:, :, :3] == fill).all(axis=2) & (art[:, :, 3] > 0)
+
+        # The drawing carries a second band of fill below its bottom edge.
+        # Painted the same as the face it reads as a stray stripe; darkened it
+        # reads as the button sitting above its own shadow. It is found rather
+        # than measured: it is the fill that lies below the last drawn edge.
+        edge = (~is_fill) & (art[:, :, 3] > 0)
+        rows = np.arange(art.shape[0])[:, None]
+        lowest_edge = np.where(edge.any(axis=0), (rows * edge).max(axis=0), art.shape[0])
+        shadow = is_fill & (rows > lowest_edge[None, :])
+        face = is_fill & ~shadow
+
+        art[face, 0], art[face, 1], art[face, 2] = color[0], color[1], color[2]
+        art[shadow, 0] = int(color[0] * SHADOW_TONE)
+        art[shadow, 1] = int(color[1] * SHADOW_TONE)
+        art[shadow, 2] = int(color[2] * SHADOW_TONE)
 
     if len(_ART_CACHE) > 64:
         _ART_CACHE.clear()
     _ART_CACHE[key] = art
     return art
+
+
+# the plate a score or a notice sits on when it has no colour of its own
+PANEL_COLOR = (46, 41, 35)
+
+
+def draw_panel(frame, text, org, scale=2, color=(235, 235, 235),
+               plate=PANEL_COLOR, anchor="topleft"):
+    """Text on the same drawn plate the buttons use, sized around the text.
+
+    Scores and notices sat on plain black rectangles before. Putting them on
+    the button's own frame means the whole screen is made of one thing, and
+    the plate is built at a whole multiple of the drawing so its pixels stay
+    square whatever the text measures.
+
+    `org` and `anchor` place the *text*, exactly as they did before; the plate
+    is then drawn around wherever the text landed.
+    """
+    text_w, text_h = FONT.measure(text, scale)
+    x, y = int(org[0]), int(org[1])
+    if anchor == "center":
+        x -= text_w // 2
+        y -= text_h // 2
+    elif anchor == "topright":
+        x -= text_w
+    elif anchor == "bottomleft":
+        y -= text_h
+
+    cap = assets.load("ui/button_cap.png")
+    unit_h = cap.shape[0] if cap is not None else 23
+    zoom = max(1, -(-(text_h + 12) // unit_h))
+    height = unit_h * zoom
+    pad = (cap.shape[1] if cap is not None else 6) * zoom + 6
+    art = _button_art(text_w + 2 * pad, height, plate)
+    if art is not None:
+        assets.overlay(frame, art, x - pad, y + text_h // 2 - art.shape[0] // 2,
+                       art.shape[1], art.shape[0])
+    FONT.draw(frame, text, (x, y), scale=scale, color=color)
 
 
 class _MouseClicks:

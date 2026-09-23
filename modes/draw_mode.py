@@ -10,8 +10,7 @@ import cv2
 import numpy as np
 
 from core import assets
-from core.pixel_font import draw_text_with_background
-from core.ui import Button, DwellClickController
+from core.ui import Button, DwellClickController, draw_panel
 
 TOOLBAR_H = 90
 BRUSH_THICKNESS = 10
@@ -135,7 +134,7 @@ def run_draw_mode(cap, window_name, tracker):
                 cv2.circle(display, left_hand.index_tip, 10, marker_color, -1)
 
         status = f"MOD: {'SİLGİ' if active_mode == 'eraser' else 'FIRÇA'}"
-        draw_text_with_background(display, status, (14, h - 44), scale=2)
+        draw_panel(display, status, (14, h - 44), scale=2)
         cv2.imshow(window_name, display)
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):

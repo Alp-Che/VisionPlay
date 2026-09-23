@@ -21,9 +21,9 @@ import cv2
 
 from core import assets
 from core.hand_tracker import hand_span
-from core.pixel_font import draw_text, draw_text_with_background
 from core.transform import integer_scale_for, place_rotated
-from core.ui import Button, DwellClickController
+from core.pixel_font import draw_text
+from core.ui import Button, DwellClickController, draw_panel
 
 TOOLBAR_H = 90
 
@@ -391,25 +391,25 @@ def run_archery_mode(cap, window_name, tracker):
             btn.draw(frame, progress=progress, hovered=hovered)
 
         # centred: the target sits at one edge or the other, never here
-        draw_text_with_background(frame, f"SKOR: {total_score}", (w // 2, 26),
+        draw_panel(frame, f"SKOR: {total_score}", (w // 2, 26),
                                   scale=3, anchor="center")
-        draw_text_with_background(frame, f"OK: {arrows_left}", (w - 30, 26), scale=2,
+        draw_panel(frame, f"OK: {arrows_left}", (w - 30, 26), scale=2,
                                   anchor="topright",
                                   color=(150, 150, 150) if arrows_left else (80, 80, 255))
         if now < message_until:
-            draw_text_with_background(frame, message, (w // 2, 90), scale=3, anchor="center",
-                                      bg_color=(0, 130, 0) if "İSABET" in message else (60, 60, 60))
+            draw_panel(frame, message, (w // 2, 90), scale=3, anchor="center",
+                                      plate=(0, 130, 0) if "İSABET" in message else (60, 60, 60))
 
         if past_line:
-            draw_text_with_background(frame, "ÇİZGİYİ GEÇTİN - GERİ ÇEKİL",
+            draw_panel(frame, "ÇİZGİYİ GEÇTİN - GERİ ÇEKİL",
                                       (w // 2, h // 2), scale=2, anchor="center",
-                                      bg_color=(0, 0, 130))
+                                      plate=(0, 0, 130))
 
         if round_over:
-            draw_text_with_background(frame, f"BİTTİ - SKOR: {total_score}",
+            draw_panel(frame, f"BİTTİ - SKOR: {total_score}",
                                       (w // 2, h // 2 - 30), scale=3, anchor="center",
-                                      bg_color=(0, 60, 130))
-            draw_text_with_background(frame, "YENİDEN'E BAS", (w // 2, h // 2 + 30),
+                                      plate=(0, 60, 130))
+            draw_panel(frame, "YENİDEN'E BAS", (w // 2, h // 2 + 30),
                                       scale=2, anchor="center")
 
         cv2.imshow(window_name, frame)
