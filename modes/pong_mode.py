@@ -31,7 +31,7 @@ BAT_HEIGHT_FRAC = 0.24       # of frame height
 BALL_RADIUS_FRAC = 0.022     # of frame height
 
 BALL_START_SPEED_FRAC = 0.62  # of frame height per second
-BALL_SPEEDUP = 1.05          # each return makes it a little quicker
+BALL_SPEEDUP = 1.10          # each return makes it noticeably quicker
 # Where the speeding up stops. Between returns the ball crosses the court, and
 # in that time a player may have to take the bat the whole height of it, so
 # the hand speed the ball demands is its own speed times height over width.

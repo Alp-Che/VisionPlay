@@ -41,8 +41,8 @@ MAX_SPEED_FACTOR = 2.2
 # was tuned to, so the ball still never leaves the top of the screen; only
 # everything happens quicker. It stops where keeping up would need a hand
 # faster than the tracker can follow.
-FALL_RAMP_PER_HIT = 0.035
-FALL_RAMP_CAP = 1.9
+FALL_RAMP_PER_HIT = 0.075
+FALL_RAMP_CAP = 2.8
 TOP_MARGIN_FRAC = 0.06      # never let the arc peak above this much of frame
 MIN_BOUNCE_FACTOR = 0.32    # ...but never damp it into a stall either
 RESTITUTION = 0.92

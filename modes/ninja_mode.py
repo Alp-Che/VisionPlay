@@ -20,7 +20,8 @@ from core.hand_tracker import hand_span
 from core.paddles import HandPaddles
 from core.rig import draw_rig
 from core.window import handle_key
-from core.ui import Button, DwellClickController, draw_panel, draw_round_timer
+from core.ui import (PANEL_COLOR, Button, DwellClickController, draw_panel,
+                     draw_round_timer)
 
 TOOLBAR_H = 90
 
@@ -43,6 +44,26 @@ TRAIL_LENGTH = 12
 BOMB_SHARE = 0.18        # how often a bomb is thrown instead of fruit
 BOMB_POINTS = -5
 
+# A run of fruit, unbroken. Every fruit adds to it; letting one fall or
+# cutting a bomb ends it. What the run buys is a bigger score for each fruit,
+# which is what makes a long one worth protecting.
+COMBO_STEP = 4           # one more point per fruit every this many
+COMBO_MAX_BONUS = 4
+
+# A clock, thrown in now and then, that buys more time when it is cut.
+TIME_SHARE = 0.07
+TIME_BONUS = 2.0         # seconds
+TIME_COLORS = ((150, 120, 40), (235, 200, 120))
+
+# Reach this run and everything comes at once for a few seconds -- fruit only,
+# no bombs, so it is a free hand rather than a minefield. Ten, not more: the
+# run breaks on a missed fruit as well as on a bomb, and a round is thirty
+# seconds, so a longer one would be something most players never see.
+FRENZY_AT = 10
+FRENZY_SECONDS = 5.0
+FRENZY_SPAWN_EVERY = (0.10, 0.22)
+FRENZY_BURST = (3, 4, 5)
+
 # (rind, flesh)
 FRUIT_COLORS = [
     ((40, 120, 40), (70, 70, 220)),    # watermelon
@@ -63,11 +84,28 @@ def _segment_hits_circle(p1, p2, center, radius):
     return math.dist(closest, center) <= radius
 
 
-def _spawn_fruit(w, h, radius):
+def _pick_kind(frenzy):
+    """What to throw next. A frenzy throws nothing but fruit; that is the
+    whole of what makes it a reward rather than a harder stretch."""
+    if frenzy:
+        return "fruit"
+    roll = random.random()
+    if roll < BOMB_SHARE:
+        return "bomb"
+    if roll < BOMB_SHARE + TIME_SHARE:
+        return "time"
+    return "fruit"
+
+
+def _spawn_fruit(w, h, radius, kind="fruit"):
     """Thrown in from below, or in from the bottom-left / bottom-right corner
     so they arc across the screen instead of always rising straight up."""
-    bomb = random.random() < BOMB_SHARE
-    rind, flesh = ((24, 24, 28), (44, 44, 52)) if bomb else random.choice(FRUIT_COLORS)
+    if kind == "bomb":
+        rind, flesh = (24, 24, 28), (44, 44, 52)
+    elif kind == "time":
+        rind, flesh = TIME_COLORS
+    else:
+        rind, flesh = random.choice(FRUIT_COLORS)
     side = random.choice(("bottom", "bottom", "left", "right"))
 
     if side != "bottom":
@@ -78,7 +116,7 @@ def _spawn_fruit(w, h, radius):
             "y": random.uniform(h * 0.72, h * 0.96),
             "vx": random.uniform(380, 620) * (1 if from_left else -1),
             "vy": -math.sqrt(2 * GRAVITY * rise),
-            "r": radius, "rind": rind, "flesh": flesh, "bomb": bomb,
+            "r": radius, "rind": rind, "flesh": flesh, "kind": kind,
             "spin": random.uniform(-3, 3), "angle": 0.0,
         }
 
@@ -89,7 +127,7 @@ def _spawn_fruit(w, h, radius):
         "x": x, "y": h + radius,
         "vx": random.uniform(-140, 140) + (w / 2 - x) * 0.35,
         "vy": -math.sqrt(2 * GRAVITY * rise),
-        "r": radius, "rind": rind, "flesh": flesh, "bomb": bomb,
+        "r": radius, "rind": rind, "flesh": flesh, "kind": kind,
         "spin": random.uniform(-3, 3), "angle": 0.0,
     }
 
@@ -101,7 +139,14 @@ def _draw_fruit(frame, fruit):
     cv2.circle(frame, center, max(1, int(radius * 0.72)), fruit["flesh"], -1, cv2.LINE_AA)
     highlight = (int(center[0] - radius * 0.3), int(center[1] - radius * 0.32))
     cv2.circle(frame, highlight, max(1, int(radius * 0.16)), (255, 255, 255), -1, cv2.LINE_AA)
-    if fruit.get("bomb"):
+    if fruit.get("kind") == "time":
+        # a clock face, so it is not mistaken for one more fruit
+        cv2.circle(frame, center, radius, (255, 255, 255), 2, cv2.LINE_AA)
+        cv2.line(frame, center, (center[0], center[1] - int(radius * 0.55)),
+                 (40, 40, 50), max(2, radius // 8), cv2.LINE_AA)
+        cv2.line(frame, center, (center[0] + int(radius * 0.42), center[1]),
+                 (40, 40, 50), max(2, radius // 10), cv2.LINE_AA)
+    elif fruit.get("kind") == "bomb":
         # a dark ball against a dark room is easy to swing through by
         # accident, so it gets a fuse and a warning ring
         cv2.circle(frame, center, radius, (60, 60, 210), 2, cv2.LINE_AA)
@@ -158,6 +203,8 @@ def run_ninja_mode(cap, window_name, tracker):
     trails = {}          # hand id -> recent fingertip positions, for the swoosh
     hand_px = 45.0
     score, missed = 0, 0
+    combo, best_combo = 0, 0
+    frenzy_until = 0.0
     message, message_until = "", 0.0
     flash_until = 0.0
     next_spawn = time.time() + 1.0
@@ -190,6 +237,8 @@ def run_ninja_mode(cap, window_name, tracker):
             halves.clear()
             trails.clear()
             score, missed = 0, 0
+            combo, best_combo = 0, 0
+            frenzy_until = 0.0
             message, message_until = "", 0.0
             next_spawn = now + 1.0
             round_start = now
@@ -201,11 +250,15 @@ def run_ninja_mode(cap, window_name, tracker):
         finger_r = FINGER_RADIUS_PER_HAND * hand_px
         min_swipe = MIN_SWIPE_FRAC * h
 
+        frenzy = now < frenzy_until
+
         # ---- spawn ----
         if running and now >= next_spawn:
-            for _ in range(random.choice((1, 1, 2))):
-                fruits.append(_spawn_fruit(w, h, fruit_radius))
-            next_spawn = now + random.uniform(*SPAWN_EVERY)
+            burst = FRENZY_BURST if frenzy else (1, 1, 2)
+            for _ in range(random.choice(burst)):
+                fruits.append(_spawn_fruit(w, h, fruit_radius, _pick_kind(frenzy)))
+            gap = FRENZY_SPAWN_EVERY if frenzy else SPAWN_EVERY
+            next_spawn = now + random.uniform(*gap)
 
         tips = finger_tracker.update(hands, now, dt)
 
@@ -234,12 +287,22 @@ def run_ninja_mode(cap, window_name, tracker):
                     continue
                 fruits.remove(fruit)
                 halves.extend(_split(fruit, angle))
-                if fruit.get("bomb"):
+                kind = fruit.get("kind", "fruit")
+                if kind == "bomb":
                     score += BOMB_POINTS
+                    combo = 0
                     message, message_until = "BOMBA", now + 1.2
                     flash_until = now + 0.18
+                elif kind == "time":
+                    round_start += TIME_BONUS
+                    message, message_until = f"+{TIME_BONUS:.0f} SANIYE", now + 1.2
                 else:
-                    score += 1
+                    combo += 1
+                    best_combo = max(best_combo, combo)
+                    score += 1 + min(combo // COMBO_STEP, COMBO_MAX_BONUS)
+                    if combo % FRENZY_AT == 0:
+                        frenzy_until = now + FRENZY_SECONDS
+                        message, message_until = "CILDIRMA", now + 1.4
 
         # ---- physics ----
         for item in fruits + halves:
@@ -252,8 +315,11 @@ def run_ninja_mode(cap, window_name, tracker):
                     or fruit["x"] < -3 * fruit["r"] or fruit["x"] > w + 3 * fruit["r"])
             if gone:
                 fruits.remove(fruit)
-                if not fruit.get("bomb"):
+                # only fruit is owed a cut: a bomb that falls is a good
+                # outcome, and a clock missed is an offer not taken
+                if fruit.get("kind", "fruit") == "fruit":
                     missed += 1
+                    combo = 0
         halves = [hf for hf in halves if hf["y"] - hf["r"] <= h]
 
         # ================= draw =================
@@ -284,16 +350,25 @@ def run_ninja_mode(cap, window_name, tracker):
 
         draw_panel(frame, f"SKOR: {score}", (w // 2, 26), scale=3,
                                   anchor="center")
-        draw_round_timer(frame, remaining / ROUND_SECONDS)
+        draw_round_timer(frame, min(remaining / ROUND_SECONDS, 1.0))
         draw_panel(frame, f"KAÇAN: {missed}", (w - 30, 26), scale=2,
                                   anchor="topright")
+        if running and combo > 1:
+            draw_panel(frame, f"KOMBO x{combo}", (w // 2, TOOLBAR_H + 60),
+                       scale=3, anchor="center",
+                       plate=(20, 70, 30) if frenzy else PANEL_COLOR)
         if now < flash_until:
             cv2.rectangle(frame, (0, 0), (w, h), (40, 40, 200), 14)
+        if frenzy and running:
+            # a border while it lasts, so the free hand is unmistakable
+            cv2.rectangle(frame, (0, 0), (w, h), (60, 200, 90), 10)
         if not running:
             draw_panel(frame, f"SÜRE DOLDU - SKOR: {score}",
-                                      (w // 2, h // 2 - 30), scale=3, anchor="center",
+                                      (w // 2, h // 2 - 60), scale=3, anchor="center",
                                       plate=(0, 60, 130))
-            draw_panel(frame, "YENİDEN DÜĞMESİNE BAS", (w // 2, h // 2 + 30),
+            draw_panel(frame, f"EN UZUN KOMBO: {best_combo}", (w // 2, h // 2),
+                       scale=2, anchor="center")
+            draw_panel(frame, "YENİDEN DÜĞMESİNE BAS", (w // 2, h // 2 + 60),
                                       scale=2, anchor="center")
         if now < message_until:
             draw_panel(frame, message, (w // 2, 96), scale=3,
