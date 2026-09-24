@@ -1,6 +1,6 @@
 """VisionPlay - kamera ve el hareketleriyle oynanan mini oyunlar.
 
-Akis: BASLA -> mod secimi -> OKCULUK / CIZIM / FRUIT NINJA / TOP SEKTIRME / PONG / KOSTEBEK.
+Akis: BASLA -> mod secimi -> OKCULUK / CIZIM / FRUIT NINJA / TOP SEKTIRME / PONG / KOSTEBEK / DELIKTEN GEC.
 
 Butonlar: elinizi butonun uzerine getirip yumruk yaparak 1 saniye bekleyin.
 """
@@ -21,6 +21,7 @@ from modes.juggle_mode import run_juggle_mode
 from modes.catch_mode import run_catch_mode
 from modes.mole_mode import run_mole_mode
 from modes.pong_mode import run_pong_mode
+from modes.wall_mode import run_wall_mode
 
 WINDOW_NAME = "VisionPlay"
 
@@ -65,6 +66,8 @@ def main():
                 state = run_mole_mode(cap, WINDOW_NAME, tracker)
             elif state == "pong":
                 state = run_pong_mode(cap, WINDOW_NAME, tracker)
+            elif state == "wall":
+                state = run_wall_mode(cap, WINDOW_NAME, tracker)
             else:
                 state = "quit"
     finally:

@@ -28,8 +28,9 @@ def run_menu(cap, window_name, tracker):
         [("juggle", "TOP SEKTİRME", (52, 30, 46)),
          ("pong", "PONG", (26, 44, 44)),
          ("mole", "KÖSTEBEK", (30, 44, 56))],
+        [("wall", "DELİKTEN GEÇ", (44, 26, 52))],
     ]
-    btn_w, btn_h, gap = 330, 120, 30
+    btn_w, btn_h, gap = 330, 104, 24
     top = h // 2 - (btn_h * len(rows) + gap * (len(rows) - 1)) // 2
 
     buttons = []
