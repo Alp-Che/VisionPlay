@@ -56,7 +56,8 @@ Ilk calistirmada isletim sistemi kamera izni ister. Windows'ta izin
 **Ayarlar > Gizlilik ve guvenlik > Kamera** altindadir; "Masaustu uygulamalarinin
 kameraniza erismesine izin verin" acik olmalidir.
 
-Cikmak icin `q` tusuna basin.
+Tam ekran icin `f`, cikmak icin `q` tusuna basin. Pencere yeniden
+boyutlandirilabilir ve goruntu orani korunur.
 
 ## macOS uygulamasi olarak paketleme
 

@@ -11,6 +11,7 @@ import cv2
 from core.camera import CameraStream
 from core.hand_tracker import HandTracker
 from core.ui import attach_mouse
+from core.window import create_window
 from modes.start import run_start
 from modes.menu import run_menu
 from modes.draw_mode import run_draw_mode
@@ -36,8 +37,12 @@ def main():
     # time the player left it.
     tracker = HandTracker(num_hands=2)
 
-    cv2.namedWindow(WINDOW_NAME)
-    attach_mouse(WINDOW_NAME)
+    create_window(WINDOW_NAME)
+    # one frame, only to learn the picture's size: a click has to be put back
+    # into these coordinates once the window is resized or made full screen
+    ret, first = cap.read()
+    size = (first.shape[1], first.shape[0]) if ret else None
+    attach_mouse(WINDOW_NAME, size)
 
     state = "start"
     try:

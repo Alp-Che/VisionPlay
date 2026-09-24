@@ -19,6 +19,7 @@ from core.hand_tracker import TRACKABLE_HAND_SPEED
 from core.paddles import HandPaddles
 from core.transform import integer_scale_for, place_rotated
 from core.rig import draw_rig
+from core.window import handle_key
 from core.ui import Button, DwellClickController, draw_panel
 
 TOOLBAR_H = 90
@@ -226,6 +227,7 @@ def run_juggle_mode(cap, window_name, tracker):
 
         cv2.imshow(window_name, frame)
         key = cv2.waitKey(1) & 0xFF
+        handle_key(window_name, key)
         if key == ord('q'):
             result = "quit"
         elif key == 27:

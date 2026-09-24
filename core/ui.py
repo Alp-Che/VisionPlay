@@ -202,16 +202,46 @@ class _MouseClicks:
 
     def __init__(self):
         self._pending = []
+        self._window = None
+        self._picture = None
 
-    def attach(self, window_name):
+    def attach(self, window_name, picture_size=None):
+        self._window = window_name
+        self._picture = picture_size
         try:
             cv2.setMouseCallback(window_name, self._record)
         except cv2.error:
             pass         # no window (headless test): nothing to listen to
 
+    def _in_picture(self, x, y):
+        """A click put back into the picture's own coordinates.
+
+        A window that can resize -- which is what a window able to go full
+        screen must be -- shows the picture scaled, so a click has to be
+        scaled back or it lands nowhere near the button under the pointer.
+
+        Only the scale is used, not where the picture sits: getWindowImageRect
+        answers in screen coordinates, and subtracting those from a click
+        given in the window's own would be worse than doing nothing. A
+        letterboxed full screen can therefore still be a little out at the
+        edges. Clicking is a convenience for whoever is at the keyboard --
+        the game itself is played with hands -- so that is left as it is.
+        """
+        if not self._picture or not self._window:
+            return x, y
+        try:
+            _, _, shown_w, shown_h = cv2.getWindowImageRect(self._window)
+        except cv2.error:
+            return x, y
+        picture_w, picture_h = self._picture
+        if shown_w <= 0 or shown_h <= 0 or (shown_w, shown_h) == self._picture:
+            return x, y                      # shown at its own size
+        return (min(max(int(round(x * picture_w / shown_w)), 0), picture_w - 1),
+                min(max(int(round(y * picture_h / shown_h)), 0), picture_h - 1))
+
     def _record(self, event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN:
-            self._pending.append((x, y))
+            self._pending.append(self._in_picture(x, y))
 
     def take(self):
         clicks, self._pending = self._pending, []
@@ -221,10 +251,12 @@ class _MouseClicks:
 MOUSE = _MouseClicks()
 
 
-def attach_mouse(window_name):
+def attach_mouse(window_name, picture_size=None):
     """Start listening for clicks on `window_name`. Call once, after the
-    window is created."""
-    MOUSE.attach(window_name)
+    window is created. `picture_size` is (width, height) of the frames shown
+    in it, which is what lets a click be found again once the window has been
+    resized or put full screen."""
+    MOUSE.attach(window_name, picture_size)
 
 
 class Button:

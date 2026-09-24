@@ -11,6 +11,7 @@ import numpy as np
 
 from core import assets
 from core.rig import draw_rig
+from core.window import handle_key
 from core.ui import Button, DwellClickController, draw_panel
 
 TOOLBAR_H = 90
@@ -140,6 +141,7 @@ def run_draw_mode(cap, window_name, tracker):
 
         cv2.imshow(window_name, display)
         key = cv2.waitKey(1) & 0xFF
+        handle_key(window_name, key)
         if key == ord('q'):
             result = "quit"
         elif key == 27:
