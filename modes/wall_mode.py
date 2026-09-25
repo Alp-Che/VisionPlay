@@ -118,7 +118,6 @@ def run_wall_mode(cap, window_name, tracker):
         ret, frame = cap.read()
         if not ret:
             break
-        frame = cv2.flip(frame, 1)
         now = time.time()
 
         hands = tracker.process(frame)

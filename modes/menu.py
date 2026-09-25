@@ -8,6 +8,10 @@ from core.window import handle_key
 from core.ui import Button, DwellClickController
 
 
+# how far down the grid must start to clear the corner logo
+LOGO_CLEARANCE = 205
+
+
 def run_menu(cap, window_name, tracker):
     """Returns a mode id ('archery', 'draw', ...), 'start' or 'quit'."""
     dwell = DwellClickController()
@@ -31,7 +35,11 @@ def run_menu(cap, window_name, tracker):
         [("wall", "DELİKTEN GEÇ", (44, 26, 52))],
     ]
     btn_w, btn_h, gap = 330, 104, 24
-    top = h // 2 - (btn_h * len(rows) + gap * (len(rows) - 1)) // 2
+    # Centred, but never so high that the grid runs into the logo in the
+    # corner: on a screen narrower than 16:9 the grid sits close enough to the
+    # left edge for the two to meet.
+    top = max(h // 2 - (btn_h * len(rows) + gap * (len(rows) - 1)) // 2,
+              LOGO_CLEARANCE)
 
     buttons = []
     for r, row in enumerate(rows):
@@ -49,7 +57,6 @@ def run_menu(cap, window_name, tracker):
         ret, frame = cap.read()
         if not ret:
             break
-        frame = cv2.flip(frame, 1)
 
         hands = tracker.process(frame)
         clicked, progress_map = dwell.update(hands, all_buttons)

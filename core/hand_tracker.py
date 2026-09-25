@@ -25,10 +25,15 @@ def hand_span(hand):
 
 
 class TrackedHand:
-    def __init__(self, label, landmarks_norm, w, h, world_landmarks=None):
+    def __init__(self, label, landmarks_norm, w, h, world_landmarks=None, shift_x=0):
         self.label = label  # "Left" or "Right", mirrored/selfie convention
         self.landmarks_norm = landmarks_norm
-        self.landmarks_px = [(int(lm.x * w), int(lm.y * h)) for lm in landmarks_norm]
+        # shift_x moves the hand from the picture it was found in to the one
+        # the game draws on, which may be a cut-down part of it. A hand
+        # outside that part keeps its true position -- off the edge, but
+        # still there.
+        self.landmarks_px = [(int(lm.x * w) - shift_x, int(lm.y * h))
+                             for lm in landmarks_norm]
         # metric 3D positions; the flat picture alone can't tell how much the
         # hand is tilted towards the lens
         self.world_landmarks = world_landmarks
@@ -168,7 +173,12 @@ class _PlayerHands:
 
 class HandTracker:
     def __init__(self, model_path=None, num_hands=2, look_for=None,
-                 min_detection=0.5, min_tracking=0.3):
+                 min_detection=0.5, min_tracking=0.3, view=None):
+        # With a view, the tracker reads the whole camera picture rather than
+        # the part the game shows, and reports hands in the shown part's
+        # coordinates. That is what keeps a hand followed when it drifts just
+        # past the edge of the screen.
+        self._view = view
         # `num_hands` is how many the game plays with; `look_for` is how many
         # the model is asked to find. Searching wider is what makes it
         # possible to ignore an onlooker rather than mistake them for the
@@ -199,7 +209,12 @@ class HandTracker:
         return ts
 
     def process(self, frame_bgr):
-        frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+        source, shift = frame_bgr, 0
+        view = self._view
+        if (view is not None and view.full is not None
+                and view.full.shape[0] == frame_bgr.shape[0]):
+            source, shift = view.full, view.x0
+        frame_rgb = cv2.cvtColor(source, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
         previous_ts = self._last_ts
         timestamp = self._next_timestamp_ms()
@@ -207,7 +222,7 @@ class HandTracker:
         dt = min((timestamp - previous_ts) / 1000.0, 0.1) if previous_ts >= 0 else 1 / 60.0
         result = self._landmarker.detect_for_video(mp_image, timestamp)
 
-        h, w = frame_bgr.shape[:2]
+        h, w = source.shape[:2]
         hands = []
         for i, lm_list in enumerate(result.hand_landmarks):
             label = "Unknown"
@@ -216,7 +231,7 @@ class HandTracker:
             world = None
             if result.hand_world_landmarks and i < len(result.hand_world_landmarks):
                 world = result.hand_world_landmarks[i]
-            hands.append(TrackedHand(label, lm_list, w, h, world))
+            hands.append(TrackedHand(label, lm_list, w, h, world, shift_x=shift))
         return self._players.pick(hands, dt, h)
 
     def close(self):

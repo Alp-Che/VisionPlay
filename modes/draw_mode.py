@@ -65,7 +65,6 @@ def run_draw_mode(cap, window_name, tracker):
         ret, frame = cap.read()
         if not ret:
             break
-        frame = cv2.flip(frame, 1)
 
         hands = tracker.process(frame)
         clicked, progress_map = dwell.update(hands, buttons)

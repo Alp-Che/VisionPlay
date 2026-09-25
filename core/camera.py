@@ -80,3 +80,47 @@ class CameraStream:
         if self._thread is not None:
             self._thread.join(timeout=1.0)
         self._cap.release()
+
+
+class ScreenView:
+    """The camera as the game shows it: mirrored, and cut to the screen's
+    shape.
+
+    A 16:9 camera on a screen of any other shape leaves bars once full screen.
+    Cutting the picture to the screen's own shape here, before any game sees
+    it, means every game lays itself out in exactly the area that will be on
+    screen -- nothing is placed where the cut would lose it.
+
+    What is cut off is not lost to the tracker, though. The tracker is handed
+    the whole mirrored picture (`full`) and told where the shown part starts
+    (`x0`), so a hand that strays just past the edge of the screen is still
+    followed: the camera sees wider than the game shows.
+
+    Mirroring happens here and nowhere else, so that the picture the tracker
+    reads and the picture the game draws on can never disagree about it.
+    """
+
+    def __init__(self, cap, aspect=None):
+        self.cap = cap
+        self.aspect = aspect      # width over height to show; None = as is
+        self.full = None          # the whole mirrored picture, last read
+        self.x0 = 0               # where the shown part begins in `full`
+
+    def isOpened(self):
+        return self.cap.isOpened()
+
+    def release(self):
+        self.cap.release()
+
+    def read(self):
+        ret, frame = self.cap.read()
+        if not ret:
+            return ret, frame
+        frame = cv2.flip(frame, 1)
+        self.full = frame
+        h, w = frame.shape[:2]
+        keep = w if not self.aspect else min(w, int(round(h * self.aspect)))
+        self.x0 = (w - keep) // 2
+        if keep == w:
+            return ret, frame.copy()
+        return ret, frame[:, self.x0:self.x0 + keep].copy()

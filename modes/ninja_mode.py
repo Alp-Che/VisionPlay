@@ -16,7 +16,6 @@ import time
 
 import cv2
 
-from core.hand_tracker import hand_span
 from core.paddles import HandPaddles
 from core.rig import draw_rig
 from core.window import handle_key
@@ -25,9 +24,18 @@ from core.ui import (PANEL_COLOR, Button, DwellClickController, draw_panel,
 
 TOOLBAR_H = 90
 
-# A little forgiveness around the tip, measured in hand spans so it shrinks
-# with the player as they step back -- the same way everything else here does.
-FINGER_RADIUS_PER_HAND = 0.12
+# Sizes are set for a player at the intended distance -- two to three metres,
+# where a hand spans about a sixteenth of the picture's height -- and then held
+# there. They used to follow the player's own hand, which made the fruit grow
+# as the player walked in: stepping up to the screen was the easy way to win.
+FRUIT_RADIUS_FRAC = 0.053     # of frame height
+FINGER_RADIUS_FRAC = 0.0075   # forgiveness around the fingertip
+# Walking in still helps even with the fruit held to one size: close to the
+# camera a flick of the wrist crosses the whole screen. A hand this much
+# bigger than at the intended distance does not cut until the player steps
+# back. About two and a quarter times the usual span, so an honest hand held
+# flat at the lens is nowhere near it.
+TOO_CLOSE_SPAN_FRAC = 0.14    # of frame height; the usual span is ~0.06
 # Below this the tip is resting, not cutting. Without it a finger parked in
 # the fruits' path would score off every one that fell onto it.
 MIN_SWIPE_FRAC = 0.30     # of frame height per second
@@ -38,7 +46,6 @@ ROUND_SECONDS = 30.0
 
 GRAVITY = 900.0           # px/s^2
 SPAWN_EVERY = (0.7, 1.6)  # seconds between throws
-FRUIT_RADIUS_PER_HAND = 0.85
 TRAIL_LENGTH = 12
 
 BOMB_SHARE = 0.18        # how often a bomb is thrown instead of fruit
@@ -203,7 +210,6 @@ def run_ninja_mode(cap, window_name, tracker):
 
     fruits, halves = [], []
     trails = {}          # hand id -> recent fingertip positions, for the swoosh
-    hand_px = 45.0
     score, missed = 0, 0
     combo, best_combo = 0, 0
     frenzy_until = 0.0
@@ -218,17 +224,12 @@ def run_ninja_mode(cap, window_name, tracker):
         ret, frame = cap.read()
         if not ret:
             break
-        frame = cv2.flip(frame, 1)
 
         now = time.time()
         dt = min(now - last_time, 0.05)
         last_time = now
 
         hands = tracker.process(frame)
-        if hands:
-            measured = max(hand_span(hd) for hd in hands)
-            if measured > 5:
-                hand_px += (measured - hand_px) * 0.15
 
         clicked, progress_map = dwell.update(hands, buttons)
         if clicked == "menu":
@@ -248,8 +249,9 @@ def run_ninja_mode(cap, window_name, tracker):
         remaining = max(ROUND_SECONDS - (now - round_start), 0.0)
         running = remaining > 0
 
-        fruit_radius = FRUIT_RADIUS_PER_HAND * hand_px
-        finger_r = FINGER_RADIUS_PER_HAND * hand_px
+        fruit_radius = FRUIT_RADIUS_FRAC * h
+        finger_r = FINGER_RADIUS_FRAC * h
+        too_close = TOO_CLOSE_SPAN_FRAC * h
         min_swipe = MIN_SWIPE_FRAC * h
 
         frenzy = now < frenzy_until
@@ -258,7 +260,11 @@ def run_ninja_mode(cap, window_name, tracker):
         if running and now >= next_spawn:
             burst = FRENZY_BURST if frenzy else (1, 1, 2)
             for _ in range(random.choice(burst)):
-                fruits.append(_spawn_fruit(w, h, fruit_radius, _pick_kind(frenzy)))
+                fruit = _spawn_fruit(w, h, fruit_radius, _pick_kind(frenzy))
+                # remembered on the fruit itself, not read off the clock, so a
+                # frenzy fruit still counts as one if it is cut after it ends
+                fruit["frenzy"] = frenzy
+                fruits.append(fruit)
             gap = FRENZY_SPAWN_EVERY if frenzy else SPAWN_EVERY
             next_spawn = now + random.uniform(*gap)
 
@@ -278,7 +284,13 @@ def run_ninja_mode(cap, window_name, tracker):
         # blade, so a fast flick can't skip over a fruit between frames.
         # Each hand is tested on its own, and a fruit leaves the list the
         # moment it is cut, so two fingers crossing it cannot score twice.
+        stepped_in = False
         for tip in tips:
+            # the fingertip tracker is built with a radius of one span per
+            # span, so a tip's radius is its hand's span
+            if tip.radius > too_close:
+                stepped_in = True
+                continue
             if math.hypot(*tip.velocity) < min_swipe:
                 continue
             angle = math.atan2(tip.velocity[1], tip.velocity[0])
@@ -298,11 +310,17 @@ def run_ninja_mode(cap, window_name, tracker):
                 elif kind == "time":
                     round_start += TIME_BONUS
                     message, message_until = f"+{TIME_BONUS:.0f} SANIYE", now + 1.2
+                elif fruit.get("frenzy"):
+                    # Paid at the run's rate, but not added to it. Counted,
+                    # a frenzy's fifty-odd fruit would carry the run straight
+                    # to the next frenzy, and that one to the next: a run
+                    # that never ends.
+                    score += 1 + min(combo // COMBO_STEP, COMBO_MAX_BONUS)
                 else:
                     combo += 1
                     best_combo = max(best_combo, combo)
                     score += 1 + min(combo // COMBO_STEP, COMBO_MAX_BONUS)
-                    if combo % FRENZY_AT == 0:
+                    if combo % FRENZY_AT == 0 and now >= frenzy_until:
                         frenzy_until = now + FRENZY_SECONDS
                         message, message_until = "CILDIRMA", now + 1.4
 
@@ -319,7 +337,7 @@ def run_ninja_mode(cap, window_name, tracker):
                 fruits.remove(fruit)
                 # only fruit is owed a cut: a bomb that falls is a good
                 # outcome, and a clock missed is an offer not taken
-                if fruit.get("kind", "fruit") == "fruit":
+                if fruit.get("kind", "fruit") == "fruit" and not fruit.get("frenzy"):
                     missed += 1
                     combo = 0
         halves = [hf for hf in halves if hf["y"] - hf["r"] <= h]
@@ -359,6 +377,9 @@ def run_ninja_mode(cap, window_name, tracker):
             draw_panel(frame, f"KOMBO x{combo}", (w // 2, TOOLBAR_H + 60),
                        scale=3, anchor="center",
                        plate=(20, 70, 30) if frenzy else PANEL_COLOR)
+        if stepped_in and running:
+            draw_panel(frame, "GERİ ÇEKİL", (w // 2, h // 2), scale=4,
+                       anchor="center", plate=(30, 30, 120))
         if now < flash_until:
             cv2.rectangle(frame, (0, 0), (w, h), (40, 40, 200), 14)
         if frenzy and running:

@@ -145,7 +145,6 @@ def run_mole_mode(cap, window_name, tracker):
         ret, frame = cap.read()
         if not ret:
             break
-        frame = cv2.flip(frame, 1)
 
         now = time.time()
         dt = min(now - last_time, 0.05)

@@ -8,10 +8,10 @@ import sys
 
 import cv2
 
-from core.camera import CameraStream
+from core.camera import CameraStream, ScreenView
 from core.hand_tracker import HandTracker
 from core.ui import attach_mouse
-from core.window import create_window
+from core.window import create_window, screen_aspect
 from modes.start import run_start
 from modes.menu import run_menu
 from modes.draw_mode import run_draw_mode
@@ -27,7 +27,9 @@ WINDOW_NAME = "VisionPlay"
 
 
 def main():
-    cap = CameraStream(0, width=1280, height=720)
+    # the picture is cut to the screen's shape once, here, and every game
+    # lays itself out in that; the tracker still sees the whole of it
+    cap = ScreenView(CameraStream(0, width=1280, height=720), screen_aspect())
     if not cap.isOpened():
         print("Kamera acilamadi.")
         sys.exit(1)
@@ -36,7 +38,7 @@ def main():
     # Building one is cheap but tearing one down is not -- around a quarter of
     # a second -- so a screen that made its own would freeze the picture every
     # time the player left it.
-    tracker = HandTracker(num_hands=2)
+    tracker = HandTracker(num_hands=2, view=cap)
 
     create_window(WINDOW_NAME)
     # one frame, only to learn the picture's size: a click has to be put back
