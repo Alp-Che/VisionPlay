@@ -38,7 +38,13 @@ TARGET_FRAC = 0.34
 # How far the bow has to be drawn, though, still follows the hand: at a few
 # metres back the whole arm span is only a couple of hundred pixels, and a
 # fixed pixel threshold there is simply unreachable.
-SNAP_PER_HAND = 1.8
+#
+# The snap reaches three hand spans, not the one and three-quarters it was.
+# At that the fists had to all but touch, and two fists touching is exactly
+# what the tracker handles worst -- it tends to lose one of them, and the snap
+# went with it. Reaching further, the arrow locks on while the hands are still
+# clearly apart and still both being followed.
+SNAP_PER_HAND = 3.0
 MIN_PULL_PER_HAND = 0.9
 MAX_PULL_PER_HAND = 4.2
 

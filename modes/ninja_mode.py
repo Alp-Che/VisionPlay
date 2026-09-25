@@ -30,12 +30,6 @@ TOOLBAR_H = 90
 # as the player walked in: stepping up to the screen was the easy way to win.
 FRUIT_RADIUS_FRAC = 0.053     # of frame height
 FINGER_RADIUS_FRAC = 0.0075   # forgiveness around the fingertip
-# Walking in still helps even with the fruit held to one size: close to the
-# camera a flick of the wrist crosses the whole screen. A hand this much
-# bigger than at the intended distance does not cut until the player steps
-# back. About two and a quarter times the usual span, so an honest hand held
-# flat at the lens is nowhere near it.
-TOO_CLOSE_SPAN_FRAC = 0.14    # of frame height; the usual span is ~0.06
 # Below this the tip is resting, not cutting. Without it a finger parked in
 # the fruits' path would score off every one that fell onto it.
 MIN_SWIPE_FRAC = 0.30     # of frame height per second
@@ -251,7 +245,6 @@ def run_ninja_mode(cap, window_name, tracker):
 
         fruit_radius = FRUIT_RADIUS_FRAC * h
         finger_r = FINGER_RADIUS_FRAC * h
-        too_close = TOO_CLOSE_SPAN_FRAC * h
         min_swipe = MIN_SWIPE_FRAC * h
 
         frenzy = now < frenzy_until
@@ -284,13 +277,7 @@ def run_ninja_mode(cap, window_name, tracker):
         # blade, so a fast flick can't skip over a fruit between frames.
         # Each hand is tested on its own, and a fruit leaves the list the
         # moment it is cut, so two fingers crossing it cannot score twice.
-        stepped_in = False
         for tip in tips:
-            # the fingertip tracker is built with a radius of one span per
-            # span, so a tip's radius is its hand's span
-            if tip.radius > too_close:
-                stepped_in = True
-                continue
             if math.hypot(*tip.velocity) < min_swipe:
                 continue
             angle = math.atan2(tip.velocity[1], tip.velocity[0])
@@ -377,9 +364,6 @@ def run_ninja_mode(cap, window_name, tracker):
             draw_panel(frame, f"KOMBO x{combo}", (w // 2, TOOLBAR_H + 60),
                        scale=3, anchor="center",
                        plate=(20, 70, 30) if frenzy else PANEL_COLOR)
-        if stepped_in and running:
-            draw_panel(frame, "GERİ ÇEKİL", (w // 2, h // 2), scale=4,
-                       anchor="center", plate=(30, 30, 120))
         if now < flash_until:
             cv2.rectangle(frame, (0, 0), (w, h), (40, 40, 200), 14)
         if frenzy and running:
