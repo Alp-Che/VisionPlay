@@ -62,10 +62,11 @@ TIME_COLORS = ((150, 120, 40), (235, 200, 120))
 # seconds, so a longer one would be something most players never see.
 FRENZY_AT = 10
 FRENZY_SECONDS = 5.0
-# About nine times the usual flow. It was twenty-two, which filled the screen
-# faster than anyone could swing at it -- a flood rather than a feast.
-FRENZY_SPAWN_EVERY = (0.18, 0.32)
-FRENZY_BURST = (2, 3, 3)
+# Four times the usual flow. It started at twenty-two and then nine; both
+# filled the screen faster than anyone could swing at it -- a flood rather
+# than a feast.
+FRENZY_SPAWN_EVERY = (0.28, 0.44)
+FRENZY_BURST = (1, 2, 2)
 
 # (rind, flesh)
 FRUIT_COLORS = [
