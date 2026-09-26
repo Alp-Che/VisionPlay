@@ -9,6 +9,7 @@ import sys
 import cv2
 import numpy as np
 
+from core import settings
 from core.camera import CameraStream, ScreenView
 from core.hand_tracker import HandTracker
 from core.ui import attach_mouse, draw_panel
@@ -43,7 +44,14 @@ def _camera_missing():
 def main():
     # the picture is cut to the screen's shape once, here, and every game
     # lays itself out in that; the tracker still sees the whole of it
-    cap = ScreenView(CameraStream(0, width=1280, height=720), screen_aspect())
+    # the camera chosen last time, which may be a phone; if it is not there
+    # today, the first camera there is
+    camera = settings.get("kamera", 0)
+    stream = CameraStream(camera if isinstance(camera, int) else 0, width=1280, height=720)
+    if not stream.isOpened() and stream.index != 0:
+        stream.release()
+        stream = CameraStream(0, width=1280, height=720)
+    cap = ScreenView(stream, screen_aspect())
     if not cap.isOpened():
         print("Kamera acilamadi.")
         _camera_missing()
@@ -56,11 +64,7 @@ def main():
     tracker = HandTracker(num_hands=2, view=cap)
 
     create_window(WINDOW_NAME)
-    # one frame, only to learn the picture's size: a click has to be put back
-    # into these coordinates once the window is resized or made full screen
-    ret, first = cap.read()
-    size = (first.shape[1], first.shape[0]) if ret else None
-    attach_mouse(WINDOW_NAME, size)
+    attach_mouse(WINDOW_NAME)
 
     state = "start"
     try:

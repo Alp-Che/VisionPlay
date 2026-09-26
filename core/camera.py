@@ -28,8 +28,15 @@ def _open_capture(index):
     return cv2.VideoCapture(index)
 
 
+# how many camera numbers are tried when looking for the next one: a laptop's
+# own camera, a phone, a capture card and a virtual camera or two
+MAX_CAMERAS = 5
+
+
 class CameraStream:
     def __init__(self, index=0, width=1280, height=720, fps=60):
+        self.index = index
+        self.size = (width, height, fps)
         self._cap = _open_capture(index)
         if self._cap.isOpened():
             self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
@@ -111,6 +118,31 @@ class ScreenView:
 
     def release(self):
         self.cap.release()
+
+    @property
+    def camera_index(self):
+        return self.cap.index
+
+    def next_camera(self):
+        """Moves on to the next camera that works, wrapping round.
+
+        Returns the number now in use, which is unchanged if no other camera
+        answers. The new one is opened and made to deliver a frame before the
+        old one is let go, so trying a camera that is not there costs nothing
+        but the wait.
+        """
+        current = self.cap.index
+        width, height, fps = self.cap.size
+        for step in range(1, MAX_CAMERAS):
+            index = (current + step) % MAX_CAMERAS
+            candidate = CameraStream(index, width, height, fps)
+            # a camera can take a moment to deliver its first frame
+            if candidate.isOpened() and candidate.read(timeout=3.0)[0]:
+                self.cap.release()
+                self.cap = candidate
+                return index
+            candidate.release()
+        return current
 
     def read(self):
         ret, frame = self.cap.read()

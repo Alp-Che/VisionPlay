@@ -16,7 +16,8 @@ _FILE_NAME = "rekorlar.json"
 _cache = None
 
 
-def _folder():
+def data_folder():
+    """Where VisionPlay keeps what it remembers between runs."""
     if sys.platform == "darwin":
         return os.path.expanduser("~/Library/Application Support/VisionPlay")
     if sys.platform == "win32":
@@ -30,7 +31,7 @@ def _load():
     global _cache
     if _cache is None:
         try:
-            with open(os.path.join(_folder(), _FILE_NAME), encoding="utf-8") as f:
+            with open(os.path.join(data_folder(), _FILE_NAME), encoding="utf-8") as f:
                 data = json.load(f)
             _cache = {k: int(v) for k, v in data.items()} if isinstance(data, dict) else {}
         except (OSError, ValueError, TypeError):
@@ -39,7 +40,7 @@ def _load():
 
 
 def _save():
-    folder = _folder()
+    folder = data_folder()
     path = os.path.join(folder, _FILE_NAME)
     try:
         os.makedirs(folder, exist_ok=True)

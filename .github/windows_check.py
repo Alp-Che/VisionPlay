@@ -78,6 +78,11 @@ class NoHands:
 
 
 class FakeCamera:
+    camera_index = 0
+
+    def next_camera(self):
+        return 0
+
     def isOpened(self):
         return True
 
@@ -116,7 +121,7 @@ def main():
         rec.submit("deneme", 7)
         rec._cache = None                 # read back from the file itself
         assert rec.best("deneme") == 7, rec.best("deneme")
-        return rec._folder()
+        return rec.data_folder()
 
     check("el modeli", tracker)
     check("ekran", aspect)

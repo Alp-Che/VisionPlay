@@ -74,6 +74,19 @@ Ilk calistirmada isletim sistemi kamera izni ister. Windows'ta izin
 **Ayarlar > Gizlilik ve guvenlik > Kamera** altindadir; "Masaustu uygulamalarinin
 kameraniza erismesine izin verin" acik olmalidir.
 
+Baslangic ekranindaki **KAMERA** dugmesi takili kameralar arasinda gecer;
+secilen kamera bir sonraki acilista da kullanilir.
+
+### Telefonu kamera olarak kullanma
+
+- **Windows 11 + Android:** Ayarlar > Bluetooth ve cihazlar > Mobil cihazlar'dan
+  telefonu eslestirip "bagli kamera olarak kullan"i acin.
+- **Diger telefonlar (iPhone dahil):** Iriun Webcam, DroidCam ya da Camo gibi bir
+  uygulamayi hem telefona hem bilgisayara kurun.
+
+Telefon bilgisayara yeni bir kamera olarak eklenir; oyunda KAMERA dugmesiyle ona
+gecin. Telefonu yatay tutun, gecikme daha az oldugu icin mumkunse USB ile baglayin.
+
 Tam ekran icin `f`, cikmak icin `q` tusuna basin. Pencere yeniden
 boyutlandirilabilir ve goruntu orani korunur.
 
