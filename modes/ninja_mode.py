@@ -17,6 +17,7 @@ import time
 import cv2
 
 from core.paddles import HandPaddles
+from core.pixel_font import draw_text
 from core.rig import draw_rig
 from core.window import handle_key
 from core.ui import (PANEL_COLOR, Button, DwellClickController, draw_panel,
@@ -48,12 +49,13 @@ BOMB_POINTS = -5
 # A run of fruit, unbroken. Every fruit adds to it; letting one fall or
 # cutting a bomb ends it. What the run buys is a bigger score for each fruit,
 # which is what makes a long one worth protecting.
-COMBO_STEP = 4           # one more point per fruit every this many
-COMBO_MAX_BONUS = 4
+COMBO_STEP = 3           # one more point per fruit every this many
+COMBO_MAX_BONUS = 9      # so a fruit is worth up to ten
+POPUP_SECONDS = 0.6      # how long a fruit's points stay up where it was cut
 
 # A clock, thrown in now and then, that buys more time when it is cut.
 TIME_SHARE = 0.07
-TIME_BONUS = 2.0         # seconds
+TIME_BONUS = 4.0         # seconds
 TIME_COLORS = ((150, 120, 40), (235, 200, 120))
 
 # Reach this run and everything comes at once for a few seconds -- fruit only,
@@ -67,6 +69,8 @@ FRENZY_SECONDS = 5.0
 # than a feast.
 FRENZY_SPAWN_EVERY = (0.28, 0.44)
 FRENZY_BURST = (1, 2, 2)
+# A breather once it ends: nothing is thrown for this long.
+FRENZY_REST = 2.0
 
 # (rind, flesh)
 FRUIT_COLORS = [
@@ -208,6 +212,7 @@ def run_ninja_mode(cap, window_name, tracker):
     score, missed = 0, 0
     combo, best_combo = 0, 0
     frenzy_until = 0.0
+    popups = []          # (text, x, y, until): a fruit's points, where it was cut
     message, message_until = "", 0.0
     flash_until = 0.0
     next_spawn = time.time() + 1.0
@@ -237,6 +242,7 @@ def run_ninja_mode(cap, window_name, tracker):
             score, missed = 0, 0
             combo, best_combo = 0, 0
             frenzy_until = 0.0
+            popups.clear()
             message, message_until = "", 0.0
             next_spawn = now + 1.0
             round_start = now
@@ -250,8 +256,10 @@ def run_ninja_mode(cap, window_name, tracker):
 
         frenzy = now < frenzy_until
 
+        resting = frenzy_until > 0 and 0 <= now - frenzy_until < FRENZY_REST
+
         # ---- spawn ----
-        if running and now >= next_spawn:
+        if running and not resting and now >= next_spawn:
             burst = FRENZY_BURST if frenzy else (1, 1, 2)
             for _ in range(random.choice(burst)):
                 fruit = _spawn_fruit(w, h, fruit_radius, _pick_kind(frenzy))
@@ -300,14 +308,20 @@ def run_ninja_mode(cap, window_name, tracker):
                     message, message_until = f"+{TIME_BONUS:.0f} SANIYE", now + 1.2
                 elif fruit.get("frenzy"):
                     # Paid at the run's rate, but not added to it. Counted,
-                    # a frenzy's fifty-odd fruit would carry the run straight
-                    # to the next frenzy, and that one to the next: a run
-                    # that never ends.
-                    score += 1 + min(combo // COMBO_STEP, COMBO_MAX_BONUS)
+                    # a frenzy's fruit would carry the run straight to the
+                    # next frenzy, and that one to the next: a run that never
+                    # ends.
+                    points = 1 + min(combo // COMBO_STEP, COMBO_MAX_BONUS)
+                    score += points
+                    popups.append((f"+{points}", fruit["x"], fruit["y"], now + POPUP_SECONDS))
                 else:
                     combo += 1
                     best_combo = max(best_combo, combo)
-                    score += 1 + min(combo // COMBO_STEP, COMBO_MAX_BONUS)
+                    points = 1 + min(combo // COMBO_STEP, COMBO_MAX_BONUS)
+                    score += points
+                    # shown where the fruit was, so the run's worth can be
+                    # seen climbing rather than only read off the total
+                    popups.append((f"+{points}", fruit["x"], fruit["y"], now + POPUP_SECONDS))
                     if combo % FRENZY_AT == 0 and now >= frenzy_until:
                         frenzy_until = now + FRENZY_SECONDS
                         message, message_until = "CILDIRMA", now + 1.4
@@ -335,6 +349,11 @@ def run_ninja_mode(cap, window_name, tracker):
             _draw_half(frame, half)
         for fruit in fruits:
             _draw_fruit(frame, fruit)
+
+        popups = [p for p in popups if p[3] > now]
+        for text, px, py, until in popups:
+            rise = (1.0 - (until - now) / POPUP_SECONDS) * 40
+            draw_text(frame, text, (int(px), int(py - 30 - rise)), scale=3, anchor="center")
 
         for path in trails.values():
             for i in range(1, len(path)):

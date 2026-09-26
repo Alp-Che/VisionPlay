@@ -326,14 +326,21 @@ def run_archery_mode(cap, window_name, tracker):
                 cross_y = prev_y + (a["y"] - prev_y) * t
                 dist_to_center = abs(cross_y - target_pos[1])
                 a["score"] = _score_for_distance(dist_to_center, target_size)
-                a["x"], a["y"] = float(target_pos[0]), cross_y
-                a["landed"] = True
-                # ride with the target from now on: it slides up and down,
-                # and an arrow left at fixed screen coordinates would slip
-                # off the face it is supposed to be stuck in
-                a["stuck_dy"] = cross_y - target_pos[1]
-                total_score += a["score"]
-                message = f"İSABET +{a['score']}" if a["score"] > 0 else "ISKA"
+                if a["score"] > 0:
+                    a["x"], a["y"] = float(target_pos[0]), cross_y
+                    a["landed"] = True
+                    # ride with the target from now on: it slides up and
+                    # down, and an arrow left at fixed screen coordinates
+                    # would slip off the face it is supposed to be stuck in
+                    a["stuck_dy"] = cross_y - target_pos[1]
+                    total_score += a["score"]
+                    message = f"İSABET +{a['score']}"
+                else:
+                    # A miss is not stuck in anything, so it does not stop:
+                    # it flies on past the target and out of the picture.
+                    # Pinned where it crossed, it hung in mid-air beside the
+                    # target and rode up and down with it.
+                    message = "ISKA"
                 message_until = now + 1.6
             elif a["y"] > h + 40:
                 a["landed"] = True
@@ -341,7 +348,9 @@ def run_archery_mode(cap, window_name, tracker):
         for a in flying_arrows:
             if a.get("stuck_dy") is not None:
                 a["x"], a["y"] = float(target_pos[0]), target_pos[1] + a["stuck_dy"]
-        flying_arrows = [a for a in flying_arrows if -60 <= a["x"] <= w + 60]
+        # gone once it has left the picture, over the side or off the bottom
+        flying_arrows = [a for a in flying_arrows
+                         if -60 <= a["x"] <= w + 60 and a["y"] <= h + 40]
 
         round_over = arrows_left == 0 and not any(not a["landed"] for a in flying_arrows)
 

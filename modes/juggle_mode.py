@@ -18,7 +18,7 @@ from core.geometry import closest_on_segment
 from core.hand_tracker import TRACKABLE_HAND_SPEED
 from core.paddles import HandPaddles
 from core.transform import integer_scale_for, place_rotated
-from core.rig import draw_rig
+from core.rig import draw_rig, rig_on
 from core.window import handle_key
 from core.ui import Button, DwellClickController, draw_panel
 
@@ -221,6 +221,12 @@ def run_juggle_mode(cap, window_name, tracker):
                                       (w // 2, h // 2), scale=2, anchor="center",
                                       plate=(0, 90, 140))
 
+        if rig_on() and ball is not None:
+            # the ball's speed right now, and the most it is allowed:
+            # for tuning, which is what the test switch is for. Only
+            # while there is a ball -- between serves there is none.
+            draw_panel(frame, f"TOP HIZI: {math.hypot(ball['vx'], ball['vy']):.0f} / {max_speed:.0f}",
+                       (24, h - 20), scale=2, anchor="bottomleft")
         draw_rig(frame, hands)
 
 

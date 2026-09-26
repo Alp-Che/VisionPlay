@@ -19,7 +19,7 @@ import cv2
 
 from core.hand_tracker import TRACKABLE_HAND_SPEED
 from core.paddles import HandPaddles
-from core.rig import draw_rig
+from core.rig import draw_rig, rig_on
 from core.window import handle_key
 from core.ui import Button, DwellClickController, draw_panel
 
@@ -162,7 +162,7 @@ def run_pong_mode(cap, window_name, tracker):
 
         # --- the ball, in small steps so a bat cannot be passed through ---
         if now >= serve_at:
-            travel = math.hypot(ball["vx"], ball["vy"]) * dt
+            travel = math.hypot(ball['vx'], ball['vy']) * dt
             steps = max(1, int(travel / (bat_w * 0.5)) + 1)
             for _ in range(steps):
                 ball["x"] += ball["vx"] * dt / steps
@@ -233,6 +233,12 @@ def run_pong_mode(cap, window_name, tracker):
             draw_panel(frame, "ELLERİNİZİ KAMERAYA GÖSTERİN", (w // 2, h // 2),
                        scale=2, anchor="center", plate=(0, 90, 140))
 
+        if rig_on() and ball is not None:
+            # the ball's speed right now, and the most it is allowed:
+            # for tuning, which is what the test switch is for. Only
+            # while there is a ball -- between serves there is none.
+            draw_panel(frame, f"TOP HIZI: {math.hypot(ball['vx'], ball['vy']):.0f} / {max_speed:.0f}",
+                       (24, h - 20), scale=2, anchor="bottomleft")
         draw_rig(frame, hands)
         cv2.imshow(window_name, frame)
         key = cv2.waitKey(1) & 0xFF
