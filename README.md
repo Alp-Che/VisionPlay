@@ -20,7 +20,22 @@ Butun arayuz el ile kullaniliyor: bir butonun uzerine parmak ucunuzu getirip
 
 Oyun bitince rekorunuz da gosterilir (TOP SEKTIRME icin en uzun seri, sag ustte). Rekorlar bilgisayarda saklanir (macOS: `~/Library/Application Support/VisionPlay`, Windows: `%APPDATA%\VisionPlay`).
 
-## Kurulum
+## Windows: hazir surum (Python gerekmez)
+
+`main`'e her push'ta GitHub, Windows icin `VisionPlay.exe`'yi kendisi derler
+ve once oyunun Windows'ta calistigini test eder.
+
+1. Depo sayfasinda **Actions** sekmesine gecin, soldan **Windows**'u secin.
+2. En ustteki yesil tikli calismaya girin; sayfanin altindaki **Artifacts**
+   bolumunden **VisionPlay-Windows**'u indirin (GitHub'a giris yapmis olmak
+   gerekir).
+3. Zip'i bir klasore cikarin ve `VisionPlay.exe`'yi calistirin. Yanindaki
+   `_internal` klasoru yerinde kalmali.
+
+Imzasiz programlarda Windows "bilgisayarinizi korudu" uyarisi verir:
+**Ek bilgi > Yine de calistir**. Yeni surum icin ayni yerden tekrar indirin.
+
+## Kaynaktan kurulum
 
 **macOS / Linux**
 
@@ -62,17 +77,16 @@ kameraniza erismesine izin verin" acik olmalidir.
 Tam ekran icin `f`, cikmak icin `q` tusuna basin. Pencere yeniden
 boyutlandirilabilir ve goruntu orani korunur.
 
-## macOS uygulamasi olarak paketleme
+## Uygulama olarak paketleme
 
 ```bash
 pip install pyinstaller
 pyinstaller VisionPlay.spec --noconfirm
 ```
 
-Sonuc: `dist/VisionPlay.app`
-
-Bu tarif yalnizca macOS icindir: `.icns` ikon ve `BUNDLE` adimi macOS'a ozgudur.
-Windows'ta oyun kaynaktan `python main.py` ile calistirilir.
+macOS'ta sonuc `dist/VisionPlay.app`, Windows'ta `dist/VisionPlay/VisionPlay.exe`.
+PyInstaller bir sistemden digeri icin derleyemez; Windows surumunu
+`.github/workflows/windows.yml` GitHub'in Windows makinesinde uretir.
 
 ## Proje yapisi
 

@@ -188,9 +188,13 @@ class HandTracker:
         # The tracking threshold is deliberately loose: a hand swung fast
         # enough to blur is exactly when the model's confidence dips, and
         # dropping it mid-swing is worse than holding a slightly shaky one.
+        # The model is handed over as bytes rather than as a path: MediaPipe
+        # cannot open a path with non-ASCII letters in it on Windows, and a
+        # Turkish user name or a OneDrive "Masaüstü" puts them there.
+        with open(model_path or resource("models", "hand_landmarker.task"), "rb") as f:
+            model = f.read()
         options = vision.HandLandmarkerOptions(
-            base_options=BaseOptions(
-                model_asset_path=model_path or resource("models", "hand_landmarker.task")),
+            base_options=BaseOptions(model_asset_buffer=model),
             running_mode=vision.RunningMode.VIDEO,
             num_hands=look_for if look_for is not None else num_hands + 2,
             min_hand_detection_confidence=min_detection,

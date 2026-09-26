@@ -7,10 +7,11 @@ Butonlar: elinizi butonun uzerine getirip yumruk yaparak 1 saniye bekleyin.
 import sys
 
 import cv2
+import numpy as np
 
 from core.camera import CameraStream, ScreenView
 from core.hand_tracker import HandTracker
-from core.ui import attach_mouse
+from core.ui import attach_mouse, draw_panel
 from core.window import create_window, screen_aspect
 from modes.start import run_start
 from modes.menu import run_menu
@@ -26,12 +27,26 @@ from modes.dance_mode import run_dance_mode
 WINDOW_NAME = "VisionPlay"
 
 
+def _camera_missing():
+    """Says so in a window. The packaged app has no console to print to, and
+    one that simply vanished would look like it had crashed -- when the usual
+    cause is only the system's camera permission being off."""
+    frame = np.full((360, 760, 3), 30, np.uint8)
+    draw_panel(frame, "KAMERA AÇILAMADI", (380, 140), scale=3, anchor="center",
+               plate=(30, 30, 120))
+    draw_panel(frame, "KAMERA İZNİNİ KONTROL ET", (380, 230), scale=2, anchor="center")
+    cv2.namedWindow(WINDOW_NAME)
+    cv2.imshow(WINDOW_NAME, frame)
+    cv2.waitKey(10000)          # any key closes it sooner
+
+
 def main():
     # the picture is cut to the screen's shape once, here, and every game
     # lays itself out in that; the tracker still sees the whole of it
     cap = ScreenView(CameraStream(0, width=1280, height=720), screen_aspect())
     if not cap.isOpened():
         print("Kamera acilamadi.")
+        _camera_missing()
         sys.exit(1)
 
     # One hand tracker for the whole session, handed to each screen in turn.

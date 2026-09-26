@@ -1,9 +1,18 @@
-# PyInstaller build recipe -- produces dist/VisionPlay.app
+# PyInstaller build recipe.
 #
-#   source venv/bin/activate && pyinstaller VisionPlay.spec --noconfirm
+#   macOS:   source venv/bin/activate && pyinstaller VisionPlay.spec --noconfirm
+#            -> dist/VisionPlay.app
+#   Windows: built by .github/workflows/windows.yml on every push
+#            -> dist/VisionPlay/VisionPlay.exe (the whole folder is needed)
+#
+# PyInstaller cannot build for one system on another, which is why the
+# Windows build runs on GitHub's Windows machines rather than here.
 #
 # NSCameraUsageDescription below is not optional: without it macOS denies the
-# camera to the bundled app and the window opens to a black frame.
+# camera to the bundled app and the window opens to a black frame. BUNDLE
+# does nothing on Windows.
+import sys
+
 from PyInstaller.utils.hooks import collect_all
 
 mp_datas, mp_binaries, mp_hidden = collect_all("mediapipe")
@@ -34,6 +43,7 @@ exe = EXE(
     strip=False,
     upx=False,
     console=False,
+    icon="assets/icon.ico" if sys.platform == "win32" else None,
 )
 
 coll = COLLECT(

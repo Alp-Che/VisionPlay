@@ -1,3 +1,8 @@
-opencv-python
-mediapipe
+# Pinned to the versions the game is built and tested with. MediaPipe in
+# particular changes between releases, and an unpinned install picks up
+# whatever is newest on the day.
+# opencv-contrib-python is what MediaPipe itself depends on; listing plain
+# opencv-python as well would put two copies of cv2 in the same place.
+mediapipe==0.10.35
+opencv-contrib-python==5.0.0.93
 numpy
