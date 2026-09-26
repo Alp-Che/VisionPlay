@@ -79,10 +79,16 @@ boyutlandirilabilir ve goruntu orani korunur.
 
 ## Uygulama olarak paketleme
 
+Sanal ortam etkinken (basta `(venv)` yazarken):
+
 ```bash
-pip install pyinstaller
-pyinstaller VisionPlay.spec --noconfirm
+python -m pip install pyinstaller==6.22.3
+python -m PyInstaller VisionPlay.spec --noconfirm --clean
 ```
+
+`python -m` bicimi, derlemeyi oyunun paketlerinin kurulu oldugu Python'la
+yaptirir. Duz `pyinstaller` komutu bilgisayardaki baska bir Python'a denk
+gelirse `.exe` "No module named 'mediapipe'" hatasiyla acilmaz.
 
 macOS'ta sonuc `dist/VisionPlay.app`, Windows'ta `dist/VisionPlay/VisionPlay.exe`.
 PyInstaller bir sistemden digeri icin derleyemez; Windows surumunu
