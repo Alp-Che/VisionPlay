@@ -18,7 +18,9 @@ from core.paddles import HandPaddles
 from core.pixel_font import draw_text
 from core.rig import draw_rig
 from core.window import handle_key
-from core.ui import Button, DwellClickController, ROUND_SECONDS, draw_panel, draw_round_timer
+from core.records import RoundRecord
+from core.ui import (Button, DwellClickController, ROUND_SECONDS, draw_panel,
+                     draw_record, draw_round_timer)
 
 TOOLBAR_H = 90
 
@@ -98,6 +100,7 @@ def _mole_axis(cx, hole_y, out, mole_w, mole_h):
 def run_mole_mode(cap, window_name, tracker):
     """Returns 'menu' or 'quit'."""
     dwell = DwellClickController()
+    record = RoundRecord("kostebek")
 
     ret, frame = cap.read()
     if not ret:
@@ -159,6 +162,7 @@ def run_mole_mode(cap, window_name, tracker):
             moles.clear()
             popups.clear()
             score, hits, misses = 0, 0, 0
+            record.reset()
             round_start = now
             next_spawn = now + 0.6
 
@@ -264,11 +268,13 @@ def run_mole_mode(cap, window_name, tracker):
         draw_round_timer(frame, remaining / ROUND_SECONDS)
 
         if not running:
+            record.finish(score)
             draw_panel(frame, f"SÜRE DOLDU - PUAN: {score}",
-                                      (w // 2, h // 2 - 30), scale=3, anchor="center",
-                                      plate=(0, 60, 130))
-            draw_panel(frame, "YENİDEN DÜĞMESİNE BAS", (w // 2, h // 2 + 30),
-                                      scale=2, anchor="center")
+                       (w // 2, h // 2 - 60), scale=3, anchor="center",
+                       plate=(0, 60, 130))
+            draw_record(frame, record, (w // 2, h // 2))
+            draw_panel(frame, "YENİDEN DÜĞMESİNE BAS", (w // 2, h // 2 + 60),
+                       scale=2, anchor="center")
         elif not paddles:
             draw_panel(frame, "ELLERİNİ KAMERAYA GÖSTER",
                                       (w // 2, h // 2), scale=2, anchor="center",

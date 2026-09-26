@@ -192,6 +192,19 @@ def draw_panel(frame, text, org, scale=2, plate=PANEL_COLOR, anchor="topleft"):
               scale=scale, anchor="center")
 
 
+# a record just set gets the same green as a hit
+NEW_RECORD_PLATE = (20, 80, 30)
+
+
+def draw_record(frame, record, org, scale=2):
+    """The end-of-round record line, from a core.records.RoundRecord."""
+    if record.is_new:
+        draw_panel(frame, f"YENİ REKOR: {record.best}", org, scale=scale,
+                   anchor="center", plate=NEW_RECORD_PLATE)
+    else:
+        draw_panel(frame, f"REKOR: {record.best}", org, scale=scale, anchor="center")
+
+
 class _MouseClicks:
     """Left clicks on the game window, held until a screen asks for them.
 

@@ -25,7 +25,8 @@ from core.transform import integer_scale_for, place_rotated
 from core.pixel_font import draw_text
 from core.rig import draw_rig
 from core.window import handle_key
-from core.ui import Button, DwellClickController, draw_panel
+from core.records import RoundRecord
+from core.ui import Button, DwellClickController, draw_panel, draw_record
 
 TOOLBAR_H = 90
 
@@ -168,6 +169,7 @@ class _StickyHand:
 def run_archery_mode(cap, window_name, tracker):
     """Returns 'menu' or 'quit'."""
     dwell = DwellClickController()
+    record = RoundRecord("okculuk")
 
     ret, frame = cap.read()
     if not ret:
@@ -234,6 +236,7 @@ def run_archery_mode(cap, window_name, tracker):
             bow_is_left = not bow_is_left
         elif clicked == "restart":
             total_score, arrows_left = 0, ARROWS_PER_ROUND
+            record.reset()
             flying_arrows.clear()
             nocked = holding_arrow = False
             pending_shot = None
@@ -410,7 +413,7 @@ def run_archery_mode(cap, window_name, tracker):
         draw_panel(frame, f"SKOR: {total_score}", (w // 2, 26),
                                   scale=3, anchor="center")
         draw_panel(frame, f"OK: {arrows_left}", (w - 30, 26), scale=2,
-                                  anchor="topright" if arrows_left else (80, 80, 255))
+                                  anchor="topright")
         if now < message_until:
             draw_panel(frame, message, (w // 2, 90), scale=3, anchor="center",
                                       plate=(0, 130, 0) if "İSABET" in message else (60, 60, 60))
@@ -421,11 +424,13 @@ def run_archery_mode(cap, window_name, tracker):
                                       plate=(0, 0, 130))
 
         if round_over:
+            record.finish(total_score)
             draw_panel(frame, f"BİTTİ - SKOR: {total_score}",
-                                      (w // 2, h // 2 - 30), scale=3, anchor="center",
-                                      plate=(0, 60, 130))
-            draw_panel(frame, "YENİDEN'E BAS", (w // 2, h // 2 + 30),
-                                      scale=2, anchor="center")
+                       (w // 2, h // 2 - 60), scale=3, anchor="center",
+                       plate=(0, 60, 130))
+            draw_record(frame, record, (w // 2, h // 2))
+            draw_panel(frame, "YENİDEN'E BAS", (w // 2, h // 2 + 60),
+                       scale=2, anchor="center")
 
         draw_rig(frame, hands)
 

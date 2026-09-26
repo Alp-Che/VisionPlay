@@ -1,4 +1,9 @@
-"""Delikten gec: a wall arrives, and your hands have to be in its holes.
+"""Dans: a wall arrives, and your hands have to be in its holes.
+
+Both holes sit on one side of the picture, and the side swaps with every
+wall -- right, then left, then right again -- so getting through means
+stepping from side to side, which is the dance. The walls come quicker all
+the time, so the stepping does too.
 
 The wall is drawn by dimming the whole picture and leaving the holes clear, so
 the only place you can see yourself is where you are supposed to be. That is
@@ -17,27 +22,37 @@ import time
 import cv2
 import numpy as np
 
+from core.records import RoundRecord
 from core.rig import draw_rig
-from core.ui import Button, DwellClickController, draw_panel, draw_round_timer
+from core.ui import Button, DwellClickController, draw_panel, draw_record, draw_round_timer
 from core.window import handle_key
 
 TOOLBAR_H = 90
 
 HOLE_RADIUS_FRAC = 0.105     # of frame height
-# How far apart the holes may be, across the picture. The far end is an arm
-# span: two holes further apart than that cannot both be reached.
+# Both holes stay on their own half, the nearer one at least this far off the
+# middle of the picture (as a share of its width), so neither can be reached
+# without moving over.
+CENTRE_CLEAR_FRAC = 0.04
+MARGIN_X_FRAC = 0.08
+# How far apart the two holes may be. They share half the picture, so the far
+# end is well short of an arm span.
 GAP_MIN_FRAC = 0.20
-GAP_MAX_FRAC = 0.52
-MARGIN_X_FRAC = 0.10
+GAP_MAX_FRAC = 0.36
 MARGIN_TOP = 150             # clear of the toolbar and the bar under it
 MARGIN_BOTTOM_FRAC = 0.12
+WALLS_TO_WIDEST = 14         # the holes spread out to the widest gap by here
 
-# How long there is to get into position. It closes in as the score grows,
-# which is the whole of the difficulty curve.
-WALL_SECONDS_START = 3.2
-WALL_SECONDS_END = 1.3
-WALLS_TO_HARDEST = 14
-PASSED_PAUSE = 0.55          # a beat to see the result before the next wall
+# How long there is to get into position. Every wall takes the same share off
+# whatever is left above the floor, so it keeps getting quicker for as long as
+# the player lasts without ever becoming impossible.
+WALL_SECONDS_START = 4.2
+WALL_SECONDS_END = 1.2
+WALL_SPEEDUP = 0.90
+# A beat between walls to see the verdict. It shortens with the walls, so a
+# player who is always through early still feels the tempo rise.
+PASSED_PAUSE = 0.55
+PASSED_PAUSE_MIN = 0.25
 
 LIVES = 3
 WALL_DIM = 0.28              # how dark the wall is against the open holes
@@ -46,22 +61,25 @@ RING_WAITING = (210, 210, 210)
 RING_FILLED = (110, 235, 130)
 
 
-def _new_wall(w, h, passed):
-    """Two holes, far enough apart to be a pose and near enough to reach."""
+def _new_wall(w, h, passed, side):
+    """Two holes on one side of the picture: -1 for the left, +1 the right."""
     radius = HOLE_RADIUS_FRAC * h
     margin_x = MARGIN_X_FRAC * w
     top = TOOLBAR_H + MARGIN_TOP
     bottom = h - MARGIN_BOTTOM_FRAC * h
 
-    reach = GAP_MIN_FRAC * w + (GAP_MAX_FRAC - GAP_MIN_FRAC) * w * min(
-        passed / WALLS_TO_HARDEST, 1.0) * random.random()
-    gap = max(GAP_MIN_FRAC * w, reach)
-    left_x = random.uniform(margin_x, w - margin_x - gap)
-    holes = [(left_x, random.uniform(top, bottom)),
-             (left_x + gap, random.uniform(top, bottom))]
-    seconds = WALL_SECONDS_START + (WALL_SECONDS_END - WALL_SECONDS_START) * min(
-        passed / WALLS_TO_HARDEST, 1.0)
-    return {"holes": holes, "radius": radius, "seconds": seconds}
+    spread = min(passed / WALLS_TO_WIDEST, 1.0)
+    gap = w * random.uniform(GAP_MIN_FRAC,
+                             GAP_MIN_FRAC + (GAP_MAX_FRAC - GAP_MIN_FRAC) * spread)
+    # laid out on the right half, then mirrored if the wall is on the left
+    near = random.uniform(w / 2 + CENTRE_CLEAR_FRAC * w, w - margin_x - gap)
+    xs = (near, near + gap) if side > 0 else (w - near - gap, w - near)
+    holes = [(x, random.uniform(top, bottom)) for x in xs]
+    seconds = WALL_SECONDS_END + (WALL_SECONDS_START - WALL_SECONDS_END) * (
+        WALL_SPEEDUP ** passed)
+    pause = max(PASSED_PAUSE * seconds / WALL_SECONDS_START, PASSED_PAUSE_MIN)
+    return {"holes": holes, "radius": radius, "seconds": seconds,
+            "pause": pause, "side": side}
 
 
 def _filled(wall, hands):
@@ -94,7 +112,7 @@ def _draw_wall(frame, wall, filled):
                    4, cv2.LINE_AA)
 
 
-def run_wall_mode(cap, window_name, tracker):
+def run_dance_mode(cap, window_name, tracker):
     """Returns 'menu' or 'quit'."""
     dwell = DwellClickController()
 
@@ -108,8 +126,9 @@ def run_wall_mode(cap, window_name, tracker):
         Button("restart", "YENİDEN", 120, 10, 150, TOOLBAR_H - 20, color=(26, 46, 30)),
     ]
 
-    passed, lives, best = 0, LIVES, 0
-    wall = _new_wall(w, h, passed)
+    passed, lives = 0, LIVES
+    record = RoundRecord("dans")
+    wall = _new_wall(w, h, passed, random.choice((-1, 1)))
     wall_start = time.time()
     verdict_until, verdict_ok = 0.0, False
 
@@ -127,7 +146,8 @@ def run_wall_mode(cap, window_name, tracker):
             break
         elif clicked == "restart":
             passed, lives = 0, LIVES
-            wall = _new_wall(w, h, passed)
+            record.reset()
+            wall = _new_wall(w, h, passed, random.choice((-1, 1)))
             wall_start = now
             verdict_until = 0.0
 
@@ -136,18 +156,19 @@ def run_wall_mode(cap, window_name, tracker):
         left = max(wall["seconds"] - (now - wall_start), 0.0)
 
         if alive and now >= verdict_until:
-            if all(filled):
-                # through it: no need to wait out the clock
-                passed += 1
-                best = max(best, passed)
-                verdict_ok, verdict_until = True, now + PASSED_PAUSE
-                wall = _new_wall(w, h, passed)
-                wall_start = now + PASSED_PAUSE
-            elif left <= 0:
-                lives -= 1
-                verdict_ok, verdict_until = False, now + PASSED_PAUSE
-                wall = _new_wall(w, h, passed)
-                wall_start = now + PASSED_PAUSE
+            if all(filled) or left <= 0:
+                # judged the moment both hands are in: getting through
+                # early never waits out the clock
+                verdict_ok = all(filled)
+                if verdict_ok:
+                    passed += 1
+                else:
+                    lives -= 1
+                pause = wall["pause"]
+                verdict_until = now + pause
+                # the next wall is always on the other side: that is the dance
+                wall = _new_wall(w, h, passed, -wall["side"])
+                wall_start = now + pause
 
         # ================= draw =================
         if alive:
@@ -157,7 +178,7 @@ def run_wall_mode(cap, window_name, tracker):
             btn.draw(frame, progress=progress_map.get(btn.id, 0.0),
                      hovered=dwell.hovered_id() == btn.id)
 
-        draw_panel(frame, f"GEÇTİN: {passed}", (w // 2, 26), scale=3, anchor="center")
+        draw_panel(frame, f"SKOR: {passed}", (w // 2, 26), scale=3, anchor="center")
         draw_panel(frame, f"CAN: {lives}", (w - 30, 26), scale=2, anchor="topright")
         if alive:
             draw_round_timer(frame, left / wall["seconds"])
@@ -167,10 +188,12 @@ def run_wall_mode(cap, window_name, tracker):
                        (w // 2, h // 2), scale=4, anchor="center",
                        plate=(20, 80, 30) if verdict_ok else (30, 30, 120))
         elif not alive:
-            draw_panel(frame, f"BİTTİ - GEÇTİĞİN DUVAR: {best}",
-                       (w // 2, h // 2 - 40), scale=3, anchor="center",
+            record.finish(passed)
+            draw_panel(frame, f"BİTTİ - SKOR: {passed}",
+                       (w // 2, h // 2 - 60), scale=3, anchor="center",
                        plate=(0, 60, 130))
-            draw_panel(frame, "YENİDEN DÜĞMESİNE BAS", (w // 2, h // 2 + 40),
+            draw_record(frame, record, (w // 2, h // 2))
+            draw_panel(frame, "YENİDEN DÜĞMESİNE BAS", (w // 2, h // 2 + 60),
                        scale=2, anchor="center")
         elif len(hands) < 2:
             draw_panel(frame, "İKİ ELİNİ DE GÖSTER", (w // 2, h - 80),

@@ -20,8 +20,9 @@ from core.paddles import HandPaddles
 from core.pixel_font import draw_text
 from core.rig import draw_rig
 from core.window import handle_key
+from core.records import RoundRecord
 from core.ui import (PANEL_COLOR, Button, DwellClickController, draw_panel,
-                     draw_round_timer)
+                     draw_record, draw_round_timer)
 
 TOOLBAR_H = 90
 
@@ -192,6 +193,7 @@ def _split(fruit, cut_angle):
 def run_ninja_mode(cap, window_name, tracker):
     """Returns 'menu' or 'quit'."""
     dwell = DwellClickController()
+    record = RoundRecord("ninja")
     # landmark 8 is the index fingertip. coast is left on: tracking gives out
     # exactly when a hand is swung hardest, and a cut already under way should
     # carry through rather than stop dead.
@@ -240,6 +242,7 @@ def run_ninja_mode(cap, window_name, tracker):
             halves.clear()
             trails.clear()
             score, missed = 0, 0
+            record.reset()
             combo, best_combo = 0, 0
             frenzy_until = 0.0
             popups.clear()
@@ -390,13 +393,15 @@ def run_ninja_mode(cap, window_name, tracker):
             # a border while it lasts, so the free hand is unmistakable
             cv2.rectangle(frame, (0, 0), (w, h), (60, 200, 90), 10)
         if not running:
+            record.finish(score)
             draw_panel(frame, f"SÜRE DOLDU - SKOR: {score}",
-                                      (w // 2, h // 2 - 60), scale=3, anchor="center",
-                                      plate=(0, 60, 130))
-            draw_panel(frame, f"EN UZUN KOMBO: {best_combo}", (w // 2, h // 2),
+                       (w // 2, h // 2 - 90), scale=3, anchor="center",
+                       plate=(0, 60, 130))
+            draw_record(frame, record, (w // 2, h // 2 - 30))
+            draw_panel(frame, f"EN UZUN KOMBO: {best_combo}", (w // 2, h // 2 + 30),
                        scale=2, anchor="center")
-            draw_panel(frame, "YENİDEN DÜĞMESİNE BAS", (w // 2, h // 2 + 60),
-                                      scale=2, anchor="center")
+            draw_panel(frame, "YENİDEN DÜĞMESİNE BAS", (w // 2, h // 2 + 90),
+                       scale=2, anchor="center")
         if now < message_until:
             draw_panel(frame, message, (w // 2, 96), scale=3,
                                       anchor="center", plate=(0, 0, 130))

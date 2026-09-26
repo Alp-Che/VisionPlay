@@ -13,7 +13,7 @@ import time
 
 import cv2
 
-from core import assets
+from core import assets, records
 from core.geometry import closest_on_segment
 from core.hand_tracker import TRACKABLE_HAND_SPEED
 from core.paddles import HandPaddles
@@ -95,7 +95,7 @@ def run_juggle_mode(cap, window_name, tracker):
 
     hand_paddles = HandPaddles(HAND_RADIUS_PER_SPAN, radius_floor)
     ball = None
-    streak, best = 0, 0
+    streak, best = 0, records.best("sektirme")
     last_bounce = 0.0
     message, message_until = "", 0.0
     last_time = time.time()
@@ -186,7 +186,9 @@ def run_juggle_mode(cap, window_name, tracker):
 
         # ---- dropped ----
         if ball["y"] - ball_r > h:
-            if streak:
+            if records.submit("sektirme", streak):
+                message, message_until = f"YENİ REKOR: {streak}", now + 2.2
+            elif streak:
                 message, message_until = f"DÜŞTÜ - {streak}", now + 1.6
             streak = 0
             ball = None
@@ -237,4 +239,6 @@ def run_juggle_mode(cap, window_name, tracker):
             result = "quit"
         elif key == 27:
             result = "menu"
+    # leaving with the ball still up ends the streak too
+    records.submit("sektirme", streak)
     return result or "quit"

@@ -11,12 +11,14 @@ Butun arayuz el ile kullaniliyor: bir butonun uzerine parmak ucunuzu getirip
 | Mod | Nasil oynanir |
 |---|---|
 | **OKCULUK** | Bir el yayi tutar, diger el yumruk yapinca ok olusur; oku yaya yaklastirip geri cekin ve birakin. Hedef asagi yukari hareket eder. |
-| **CIZIM** | Parmak ucunuzla havaya cizin. |
+| **CIZIM** | Bir elin isaret parmagi kalemdir, diger el yumruk yapinca cizer. YON DEGISTIR iki elin gorevini degistirir. |
 | **FRUIT NINJA** | Iki isaret parmaginizla meyveleri kesin, bombalara dokunmayin. Ust uste kestikce kombo buyur; saat kesince sure kazanirsiniz. |
 | **TOP SEKTIRME** | Topu elinizle havada tutun, yere dusurmeyin. |
 | **KOSTEBEK** | Alttan cikan kostebekleri elinizle geri sokun, kotu olanlara vurmayin. |
 | **PONG** | Iki kisilik. Herkes kendi tarafindaki raketi eliyle surer. |
-| **DELIKTEN GEC** | Duvar geliyor; iki elinizi deliklerine yerlestirip gecin. |
+| **DANS** | Duvar geliyor; iki elinizi deliklerine yerlestirip gecin. Delikler bir sagda bir solda, gitgide hizlanir. |
+
+Oyun bitince rekorunuz da gosterilir (TOP SEKTIRME icin en uzun seri, sag ustte). Rekorlar bilgisayarda saklanir (macOS: `~/Library/Application Support/VisionPlay`, Windows: `%APPDATA%\VisionPlay`).
 
 ## Kurulum
 
