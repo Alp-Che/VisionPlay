@@ -144,7 +144,8 @@ def run_pong_mode(cap, window_name, tracker):
         dt = min(now - last_time, 0.05)
         last_time = now
 
-        hands = tracker.process(frame)
+        # one player per half of the picture, each with the hand they raise
+        hands = tracker.process(frame, players=2)
         clicked, progress_map = dwell.update(hands, buttons)
         if clicked == "menu":
             result = "menu"

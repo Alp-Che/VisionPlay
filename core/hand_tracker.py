@@ -4,6 +4,11 @@ The wrapper also decides *whose* hands these are. The game is meant to be
 played in a room with other people in it, and MediaPipe will report a hand
 that wanders into shot as readily as the player's own -- so it is asked for
 more hands than the game follows, and the extra ones are then set aside.
+
+Setting them aside is done by body where it can be (see core.people): only
+hands on the player's own wrists are taken. Where no body is to be seen --
+the pose model is missing, or the player stands too close for it -- it falls
+back to going by the hands alone.
 """
 import math
 import time
@@ -13,8 +18,10 @@ import mediapipe as mp
 from mediapipe.tasks.python import vision
 from mediapipe.tasks.python.core.base_options import BaseOptions
 
+from core import rig
 from core.geometry import is_hand_closed
 from core.paths import resource
+from core.people import POSE_STALE_SECONDS, PlayerPicker, PoseWatcher, owner_of
 
 
 def hand_span(hand):
@@ -74,6 +81,14 @@ FOLLOW_GRACE_FRAMES = 20
 # running before it is allowed to take the controls.
 MIN_HAND_FRAC = 0.05         # of frame height
 CLAIM_FRAMES = 4
+# A hand being followed that turns out to be on somebody else's wrist is let
+# go -- but only once it has been seen there a few frames running, since a
+# single pose answer can put a wrist in the wrong place.
+EVICT_FRAMES = 3
+# Candidates the model is asked for. Enough that in a crowd the player's two
+# are among them; each extra hand actually present costs a little, hands that
+# are not there cost nothing.
+LOOK_FOR = 6
 
 
 def _apparent_size(hand):
@@ -100,10 +115,22 @@ class _PlayerHands:
     def __init__(self, follow, grace=FOLLOW_GRACE_FRAMES):
         self.follow = follow
         self.grace = grace
-        self._slots = []         # [{"at": (x, y), "missing": frames}, ...]
+        self._slots = []         # [{"at": (x, y), "missing": frames, "foreign": frames}, ...]
         self._waiting = []       # hands not yet trusted with a place
 
-    def pick(self, hands, dt, frame_h):
+    def reset(self):
+        """Lets go of every hand: the player they belonged to has changed."""
+        self._slots, self._waiting = [], []
+
+    def pick(self, hands, dt, frame_h, admit=None, foreign=None, rank=None):
+        """The hands to follow this frame.
+
+        `admit(hand)` says whether a new hand may take a free place at all,
+        `foreign(hand)` whether a hand being followed is on someone else's
+        wrist, and `rank(hand)` which of several ready hands goes first
+        (largest first when not given). Without them it goes by the hands
+        alone.
+        """
         # too small to be a hand held up at the camera
         floor = MIN_HAND_FRAC * frame_h
         hands = [hand for hand in hands if _apparent_size(hand) >= floor]
@@ -129,9 +156,13 @@ class _PlayerHands:
                 slot["missing"] += 1
                 continue
             taken.add(best)
-            chosen[index] = best
             slot["at"] = centres[best]
             slot["missing"] = 0
+            slot["foreign"] = slot.get("foreign", 0) + 1 if foreign and foreign(hands[best]) else 0
+            if slot["foreign"] >= EVICT_FRAMES:
+                slot["missing"] = self.grace + 1       # given up below
+                continue
+            chosen[index] = best
 
         # a place is only given up once its hand has been gone a while
         alive = [i for i, slot in enumerate(self._slots) if slot["missing"] <= self.grace]
@@ -159,12 +190,14 @@ class _PlayerHands:
         self._waiting = still_waiting
 
         # a free place goes to the steadiest hand nearest the camera
-        ready = sorted((c for c in self._waiting if c["seen"] >= CLAIM_FRAMES),
-                       key=lambda c: _apparent_size(hands[c["hand"]]), reverse=True)
+        order = rank or _apparent_size
+        ready = sorted((c for c in self._waiting if c["seen"] >= CLAIM_FRAMES
+                        and (admit is None or admit(hands[c["hand"]]))),
+                       key=lambda c: order(hands[c["hand"]]), reverse=True)
         for candidate in ready:
             if len(self._slots) >= self.follow:
                 break
-            self._slots.append({"at": candidate["at"], "missing": 0})
+            self._slots.append({"at": candidate["at"], "missing": 0, "foreign": 0})
             chosen.append(candidate["hand"])
             self._waiting.remove(candidate)
 
@@ -173,18 +206,20 @@ class _PlayerHands:
 
 class HandTracker:
     def __init__(self, model_path=None, num_hands=2, look_for=None,
-                 min_detection=0.5, min_tracking=0.3, view=None):
+                 min_detection=0.5, min_tracking=0.3, view=None, pose_model_path=None):
         # With a view, the tracker reads the whole camera picture rather than
         # the part the game shows, and reports hands in the shown part's
         # coordinates. That is what keeps a hand followed when it drifts just
         # past the edge of the screen.
         self._view = view
-        # `num_hands` is how many the game plays with; `look_for` is how many
-        # the model is asked to find. Searching wider is what makes it
-        # possible to ignore an onlooker rather than mistake them for the
+        # `num_hands` is how many hands one player plays with; `look_for` is
+        # how many the model is asked to find. Searching wider is what makes
+        # it possible to ignore an onlooker rather than mistake them for the
         # player, and it is close to free -- measured at 5.33 ms a frame for
         # two and 5.35 for four.
-        self._players = _PlayerHands(num_hands)
+        self._num_hands = num_hands
+        self._seats = None
+        self._setup_seats(1)
         # The tracking threshold is deliberately loose: a hand swung fast
         # enough to blur is exactly when the model's confidence dips, and
         # dropping it mid-swing is worse than holding a slightly shaky one.
@@ -196,14 +231,36 @@ class HandTracker:
         options = vision.HandLandmarkerOptions(
             base_options=BaseOptions(model_asset_buffer=model),
             running_mode=vision.RunningMode.VIDEO,
-            num_hands=look_for if look_for is not None else num_hands + 2,
+            num_hands=look_for if look_for is not None else max(LOOK_FOR, num_hands + 2),
             min_hand_detection_confidence=min_detection,
             min_hand_presence_confidence=min_tracking,
             min_tracking_confidence=min_tracking,
         )
         self._landmarker = vision.HandLandmarker.create_from_options(options)
+        # The body model is an improvement, not a requirement: an install
+        # from before it existed has no model file, and the game must still
+        # run -- going by hands alone, as it always did.
+        try:
+            self._pose = PoseWatcher(pose_model_path)
+        except (OSError, RuntimeError, ValueError) as error:
+            print(f"Vucut modeli yuklenemedi, yalnizca eller kullanilacak: {error}")
+            self._pose = None
+        self._pose_seen = None
         self._t0 = time.monotonic()
         self._last_ts = -1
+
+    @property
+    def sees_bodies(self):
+        return self._pose is not None
+
+    def _setup_seats(self, seats):
+        """One player, or one for each half of the picture (Pong)."""
+        if self._seats == seats:
+            return
+        self._seats = seats
+        self._picker = PlayerPicker(seats)
+        follow = self._num_hands if seats == 1 else 1
+        self._hands = [_PlayerHands(follow) for _ in range(seats)]
 
     def _next_timestamp_ms(self):
         ts = int((time.monotonic() - self._t0) * 1000)
@@ -212,13 +269,21 @@ class HandTracker:
         self._last_ts = ts
         return ts
 
-    def process(self, frame_bgr):
+    def process(self, frame_bgr, players=1):
+        """The player's hands in this frame.
+
+        `players=2` splits the picture down the middle, with a player -- and
+        one hand -- for each side; everything else plays with one player.
+        """
+        self._setup_seats(players)
         source, shift = frame_bgr, 0
         view = self._view
         if (view is not None and view.full is not None
                 and view.full.shape[0] == frame_bgr.shape[0]):
             source, shift = view.full, view.x0
         frame_rgb = cv2.cvtColor(source, cv2.COLOR_BGR2RGB)
+        if self._pose is not None:
+            self._pose.submit(frame_rgb, shift)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
         previous_ts = self._last_ts
         timestamp = self._next_timestamp_ms()
@@ -236,7 +301,64 @@ class HandTracker:
             if result.hand_world_landmarks and i < len(result.hand_world_landmarks):
                 world = result.hand_world_landmarks[i]
             hands.append(TrackedHand(label, lm_list, w, h, world, shift_x=shift))
-        return self._players.pick(hands, dt, h)
+        return self._choose(hands, dt, h, frame_bgr.shape[1])
+
+    def _choose(self, hands, dt, frame_h, shown_w):
+        now = time.monotonic()
+        people, stamp = self._pose.latest() if self._pose is not None else (None, None)
+        bodies = people is not None and stamp is not None and now - stamp <= POSE_STALE_SECONDS
+        if bodies and stamp != self._pose_seen:
+            self._pose_seen = stamp
+            for changed, picked in zip(self._picker.update(people, shown_w, now),
+                                       self._hands):
+                if changed:
+                    picked.reset()
+        players = self._picker.players() if bodies else [None] * self._seats
+        # The players go first, so a hand exactly as near a player's wrist as
+        # someone else's is the player's. A player the model has just lost
+        # sight of stays in, too: their seat is held for a moment, and the
+        # hands with it.
+        seated = [p for p in players if p is not None]
+        known = seated + [p for p in (people if bodies else []) if p not in seated]
+        rig.show_people(known, players)
+
+        chosen, remaining = [], hands
+        for side, (player, picker) in enumerate(zip(players, self._hands)):
+            admit, foreign, rank = self._rules(side, player, known, shown_w)
+            picked = picker.pick(remaining, dt, frame_h, admit=admit, foreign=foreign,
+                                 rank=rank)
+            chosen += picked
+            remaining = [hand for hand in remaining if hand not in picked]
+        return chosen
+
+    def _rules(self, side, player, known, shown_w):
+        """What one seat may take: its player's hands, and nobody else's."""
+        def on_this_side(hand):
+            if self._seats == 1:
+                return True
+            left = hand.landmarks_px[9][0] < shown_w / 2
+            return left == (side == 0)
+
+        if player is not None:
+            def admit(hand):
+                return owner_of(hand, known) is player
+        else:
+            # Nobody seen in this seat: a hand may still come in, as long as it
+            # is on no one else's wrist -- which, with no bodies seen at all,
+            # is how it always worked.
+            def admit(hand):
+                return on_this_side(hand) and owner_of(hand, known) is None
+
+        def foreign(hand):
+            owner = owner_of(hand, known)
+            return owner is not None and owner is not player
+
+        # In Pong a player plays with one hand, and it is the raised one: the
+        # other hangs at their side. Elsewhere, the nearest hands.
+        rank = (lambda hand: -hand.landmarks_px[0][1]) if self._seats > 1 else None
+        return admit, foreign, rank
 
     def close(self):
+        if self._pose is not None:
+            self._pose.close()
         self._landmarker.close()
