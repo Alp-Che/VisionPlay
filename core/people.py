@@ -27,7 +27,8 @@ from core.paths import resource
 
 # MediaPipe's 33 pose points, the few used here
 LEFT_SHOULDER, RIGHT_SHOULDER = 11, 12
-LEFT_WRIST, RIGHT_WRIST = 15, 16
+# each hand as the body model sees it: wrist, then the pinky and index knuckles
+BODY_HANDS = ((15, 17, 19), (16, 18, 20))
 LEFT_HIP, RIGHT_HIP = 23, 24
 
 MAX_PEOPLE = 4
@@ -40,12 +41,16 @@ POSE_INTERVAL = 1 / 20
 # by it at all.
 POSE_STALE_SECONDS = 0.6
 
-# How far a hand's wrist may be from a body's wrist and still be that body's,
+# How far a hand may be from one of a body's hands and still be that body's,
 # as a share of the body's size (about its shoulder width). Generous, because
-# the pose answer lags the hands slightly and a swung hand runs ahead of it;
-# where two people are close, the nearer wrist wins anyway.
+# the pose answer lags the hands slightly and a swung hand runs ahead of it.
 OWNER_REACH = 0.9
 OWNER_REACH_MIN_PX = 50
+# A hand is only settled as somebody's when it is clearly nearer them than
+# anyone else: the next-nearest body must be this much further away. Between
+# two people standing close, a hand could be either's, and then it is
+# neither's.
+CLEAR_MARGIN = 1.5
 
 # Keeping the player. A player the model loses sight of keeps their place for
 # a moment, as a hand does; someone else takes over only by standing clearly
@@ -60,7 +65,7 @@ FOLLOW_REACH_MIN_PX = 80
 class Person:
     """One body, in the coordinates of the picture the game draws on."""
 
-    __slots__ = ("points", "size", "centre", "wrists")
+    __slots__ = ("points", "size", "centre", "hands")
 
     def __init__(self, landmarks, w, h, shift_x=0):
         self.points = [(lm.x * w - shift_x, lm.y * h,
@@ -78,20 +83,43 @@ class Person:
             hips = ((hip_l[0] + hip_r[0]) / 2, (hip_l[1] + hip_r[1]) / 2)
             size = max(size, 0.8 * math.dist(self.centre, hips))
         self.size = size
-        self.wrists = (self.points[LEFT_WRIST][:2], self.points[RIGHT_WRIST][:2])
+        # each hand as (wrist, middle of the knuckles), to be laid against the
+        # same two points of a hand the hand model found
+        self.hands = tuple(
+            (self.points[wrist][:2],
+             ((self.points[pinky][0] + self.points[index][0]) / 2,
+              (self.points[pinky][1] + self.points[index][1]) / 2))
+            for wrist, pinky, index in BODY_HANDS)
 
 
-def owner_of(hand, people):
-    """The person whose wrist this hand is on, or None if it is on nobody's."""
-    wrist = hand.landmarks_px[0]
-    best, best_distance = None, None
-    for person in people:
-        limit = max(OWNER_REACH * person.size, OWNER_REACH_MIN_PX)
-        for point in person.wrists:
-            distance = math.dist(wrist, point)
-            if distance <= limit and (best_distance is None or distance < best_distance):
-                best, best_distance = person, distance
-    return best
+def _hand_distance(hand, body_hand):
+    """How far a found hand is from one of a body's hands: wrist to wrist and
+    knuckles to knuckles, averaged. Two points agree far more often than one
+    -- the body model's wrist alone can sit a hand's width off."""
+    points = hand.landmarks_px
+    knuckles = ((points[5][0] + points[17][0]) / 2, (points[5][1] + points[17][1]) / 2)
+    wrist, middle = body_hand
+    return (math.dist(points[0], wrist) + math.dist(knuckles, middle)) / 2
+
+
+def whose(hand, people):
+    """(person, clear) -- whose hand this is.
+
+    The person is the nearest body with a hand within reach, or None. `clear`
+    says nobody else comes close: a hand that is almost as near somebody else
+    is not settled as anyone's. On a tie the earlier person in `people` wins,
+    so the caller lists the players first.
+    """
+    scored = sorted(((min(_hand_distance(hand, body_hand) for body_hand in person.hands),
+                      order, person) for order, person in enumerate(people)),
+                    key=lambda item: (item[0], item[1]))
+    if not scored:
+        return None, False
+    nearest, _, person = scored[0]
+    if nearest > max(OWNER_REACH * person.size, OWNER_REACH_MIN_PX):
+        return None, False
+    clear = len(scored) == 1 or scored[1][0] >= nearest * CLEAR_MARGIN
+    return person, clear
 
 
 class Seat:
