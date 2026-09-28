@@ -4,11 +4,6 @@ The wrapper also decides *whose* hands these are. The game is meant to be
 played in a room with other people in it, and MediaPipe will report a hand
 that wanders into shot as readily as the player's own -- so it is asked for
 more hands than the game follows, and the extra ones are then set aside.
-
-Setting them aside is done by body where it can be (see core.people): only
-hands on the player's own wrists are taken. Where no body is to be seen --
-the pose model is missing, or the player stands too close for it -- it falls
-back to going by the hands alone.
 """
 import math
 import time
@@ -18,10 +13,8 @@ import mediapipe as mp
 from mediapipe.tasks.python import vision
 from mediapipe.tasks.python.core.base_options import BaseOptions
 
-from core import rig
 from core.geometry import is_hand_closed
 from core.paths import resource
-from core.people import POSE_STALE_SECONDS, PlayerPicker, PoseWatcher, whose
 
 
 def hand_span(hand):
@@ -81,29 +74,6 @@ FOLLOW_GRACE_FRAMES = 20
 # running before it is allowed to take the controls.
 MIN_HAND_FRAC = 0.05         # of frame height
 CLAIM_FRAMES = 4
-# What a hand is judged to be, where bodies can be seen (core.people.whose).
-MINE, THEIRS, UNSURE = "mine", "theirs", "unsure"
-# A hand being followed that cannot be put down as the player's is let go
-# after this long. Long enough for a swing to outrun the body model and come
-# back; short enough that a stranger's hand never gets to play.
-UNSURE_SECONDS = 0.4
-# How far a followed hand may turn up from where its own movement said it
-# would be, without having to be shown to be the player's. A swing speeds up
-# over a few frames and is easy to foresee, however fast it gets; a different
-# hand turning up in the place is not.
-FREE_JUMP_SPEED = 3000.0     # px/s of surprise
-# Someone the body model misses for a moment is still there. They are kept in
-# mind this long, so that for that moment their hands are still theirs rather
-# than nobody's -- nobody's being what a free place will take.
-PERSON_MEMORY_SECONDS = 0.5
-# And once any body has been seen, the game keeps going by bodies for this
-# long after the last one, rather than falling back at the first empty answer
-# to taking any hand at all.
-BODY_MEMORY_SECONDS = 1.5
-# Candidates the model is asked for. Enough that in a crowd the player's two
-# are among them; each extra hand actually present costs a little, hands that
-# are not there cost nothing.
-LOOK_FOR = 6
 
 
 def _apparent_size(hand):
@@ -125,76 +95,43 @@ class _PlayerHands:
     Two rules. A hand the game is already following keeps its place for as
     long as it stays in view, so nobody takes over by walking past. A place
     that does fall vacant goes to the largest hand not already spoken for.
-
-    Where bodies can be seen, a third rule is over both: every hand is judged
-    MINE, THEIRS or UNSURE, and only the player's own ever get a place. A hand
-    that is plainly someone else's is dropped at once, even mid-game.
     """
 
     def __init__(self, follow, grace=FOLLOW_GRACE_FRAMES):
         self.follow = follow
         self.grace = grace
-        self._slots = []         # [{"at", "v", "missing", "unsure"}, ...]
+        self._slots = []         # [{"at": (x, y), "missing": frames}, ...]
         self._waiting = []       # hands not yet trusted with a place
 
-    def reset(self):
-        """Lets go of every hand: the player they belonged to has changed."""
-        self._slots, self._waiting = [], []
-
-    def pick(self, hands, dt, frame_h, judge=None, rank=None):
-        """The hands to follow this frame.
-
-        `judge(hand)` gives MINE, THEIRS or UNSURE; without it (no bodies to
-        go by) every hand is fair game, as it always was. `rank(hand)` orders
-        ready hands for a free place, largest first when not given.
-        """
+    def pick(self, hands, dt, frame_h):
         # too small to be a hand held up at the camera
         floor = MIN_HAND_FRAC * frame_h
         hands = [hand for hand in hands if _apparent_size(hand) >= floor]
-        verdicts = [judge(hand) if judge else None for hand in hands]
         centres = [hand.landmarks_px[9] for hand in hands]
         # Deliberately not widened while a hand is missing. A place waiting
         # for its hand back is exactly when a stranger's hand is most likely
         # to be the nearest thing to it, and adopting one is how the controls
         # get stolen. The hand is far likelier to reappear where it vanished.
         reach = MAX_HAND_SPEED * dt
-        free_jump = FREE_JUMP_SPEED * dt
         taken = set()
         chosen = [None] * len(self._slots)
 
         # every place first tries to keep the hand it had last frame
         for index, slot in enumerate(self._slots):
-            expected = (slot["at"][0] + slot["v"][0] * dt, slot["at"][1] + slot["v"][1] * dt)
             best, best_distance = None, None
             for i, centre in enumerate(centres):
-                if i in taken or verdicts[i] == THEIRS:
+                if i in taken:
                     continue
                 distance = math.dist(centre, slot["at"])
-                if distance > reach:
-                    continue
-                # Coming back after a gap, or turning up somewhere its own
-                # movement did not lead: only the player's own will do.
-                # That is exactly how a stranger's hand used to slip in.
-                if (judge and verdicts[i] != MINE
-                        and (slot["missing"] > 0 or math.dist(centre, expected) > free_jump)):
-                    continue
-                if best_distance is None or distance < best_distance:
+                if distance <= reach and (best_distance is None or distance < best_distance):
                     best, best_distance = i, distance
             if best is None:
                 slot["missing"] += 1
-                slot["v"] = (0.0, 0.0)
                 continue
             taken.add(best)
-            if dt > 0:
-                slot["v"] = ((centres[best][0] - slot["at"][0]) / dt,
-                             (centres[best][1] - slot["at"][1]) / dt)
+            chosen[index] = best
             slot["at"] = centres[best]
             slot["missing"] = 0
-            slot["unsure"] = 0.0 if verdicts[best] in (MINE, None) else slot["unsure"] + dt
-            if slot["unsure"] > UNSURE_SECONDS:
-                slot["missing"] = self.grace + 1       # given up below
-                continue
-            chosen[index] = best
 
         # a place is only given up once its hand has been gone a while
         alive = [i for i, slot in enumerate(self._slots) if slot["missing"] <= self.grace]
@@ -221,17 +158,13 @@ class _PlayerHands:
         # frame after frame, not now and then
         self._waiting = still_waiting
 
-        # a free place goes to the steadiest hand nearest the camera -- and,
-        # where bodies are seen, only ever to one of the player's own
-        order = rank or _apparent_size
-        ready = sorted((c for c in self._waiting if c["seen"] >= CLAIM_FRAMES
-                        and verdicts[c["hand"]] in (MINE, None)),
-                       key=lambda c: order(hands[c["hand"]]), reverse=True)
+        # a free place goes to the steadiest hand nearest the camera
+        ready = sorted((c for c in self._waiting if c["seen"] >= CLAIM_FRAMES),
+                       key=lambda c: _apparent_size(hands[c["hand"]]), reverse=True)
         for candidate in ready:
             if len(self._slots) >= self.follow:
                 break
-            self._slots.append({"at": candidate["at"], "v": (0.0, 0.0),
-                                "missing": 0, "unsure": 0.0})
+            self._slots.append({"at": candidate["at"], "missing": 0})
             chosen.append(candidate["hand"])
             self._waiting.remove(candidate)
 
@@ -240,20 +173,18 @@ class _PlayerHands:
 
 class HandTracker:
     def __init__(self, model_path=None, num_hands=2, look_for=None,
-                 min_detection=0.5, min_tracking=0.3, view=None, pose_model_path=None):
+                 min_detection=0.5, min_tracking=0.3, view=None):
         # With a view, the tracker reads the whole camera picture rather than
         # the part the game shows, and reports hands in the shown part's
         # coordinates. That is what keeps a hand followed when it drifts just
         # past the edge of the screen.
         self._view = view
-        # `num_hands` is how many hands one player plays with; `look_for` is
-        # how many the model is asked to find. Searching wider is what makes
-        # it possible to ignore an onlooker rather than mistake them for the
+        # `num_hands` is how many the game plays with; `look_for` is how many
+        # the model is asked to find. Searching wider is what makes it
+        # possible to ignore an onlooker rather than mistake them for the
         # player, and it is close to free -- measured at 5.33 ms a frame for
         # two and 5.35 for four.
-        self._num_hands = num_hands
-        self._seats = None
-        self._setup_seats(1)
+        self._players = _PlayerHands(num_hands)
         # The tracking threshold is deliberately loose: a hand swung fast
         # enough to blur is exactly when the model's confidence dips, and
         # dropping it mid-swing is worse than holding a slightly shaky one.
@@ -265,38 +196,14 @@ class HandTracker:
         options = vision.HandLandmarkerOptions(
             base_options=BaseOptions(model_asset_buffer=model),
             running_mode=vision.RunningMode.VIDEO,
-            num_hands=look_for if look_for is not None else max(LOOK_FOR, num_hands + 2),
+            num_hands=look_for if look_for is not None else num_hands + 2,
             min_hand_detection_confidence=min_detection,
             min_hand_presence_confidence=min_tracking,
             min_tracking_confidence=min_tracking,
         )
         self._landmarker = vision.HandLandmarker.create_from_options(options)
-        # The body model is an improvement, not a requirement: an install
-        # from before it existed has no model file, and the game must still
-        # run -- going by hands alone, as it always did.
-        try:
-            self._pose = PoseWatcher(pose_model_path)
-        except (OSError, RuntimeError, ValueError) as error:
-            print(f"Vucut modeli yuklenemedi, yalnizca eller kullanilacak: {error}")
-            self._pose = None
-        self._pose_seen = None
-        self._remembered = []        # [(person, when last seen)]
-        self._bodies_seen = None     # when the body model last saw anyone
         self._t0 = time.monotonic()
         self._last_ts = -1
-
-    @property
-    def sees_bodies(self):
-        return self._pose is not None
-
-    def _setup_seats(self, seats):
-        """One player, or one for each half of the picture (Pong)."""
-        if self._seats == seats:
-            return
-        self._seats = seats
-        self._picker = PlayerPicker(seats)
-        follow = self._num_hands if seats == 1 else 1
-        self._hands = [_PlayerHands(follow) for _ in range(seats)]
 
     def _next_timestamp_ms(self):
         ts = int((time.monotonic() - self._t0) * 1000)
@@ -305,21 +212,13 @@ class HandTracker:
         self._last_ts = ts
         return ts
 
-    def process(self, frame_bgr, players=1):
-        """The player's hands in this frame.
-
-        `players=2` splits the picture down the middle, with a player -- and
-        one hand -- for each side; everything else plays with one player.
-        """
-        self._setup_seats(players)
+    def process(self, frame_bgr):
         source, shift = frame_bgr, 0
         view = self._view
         if (view is not None and view.full is not None
                 and view.full.shape[0] == frame_bgr.shape[0]):
             source, shift = view.full, view.x0
         frame_rgb = cv2.cvtColor(source, cv2.COLOR_BGR2RGB)
-        if self._pose is not None:
-            self._pose.submit(frame_rgb, shift)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
         previous_ts = self._last_ts
         timestamp = self._next_timestamp_ms()
@@ -337,73 +236,7 @@ class HandTracker:
             if result.hand_world_landmarks and i < len(result.hand_world_landmarks):
                 world = result.hand_world_landmarks[i]
             hands.append(TrackedHand(label, lm_list, w, h, world, shift_x=shift))
-        return self._choose(hands, dt, h, frame_bgr.shape[1])
-
-    def _choose(self, hands, dt, frame_h, shown_w):
-        now = time.monotonic()
-        people, stamp = self._pose.latest() if self._pose is not None else (None, None)
-        fresh = people is not None and stamp is not None and now - stamp <= POSE_STALE_SECONDS
-        if fresh and stamp != self._pose_seen:
-            self._pose_seen = stamp
-            self._remember(people, now)
-            for changed, picked in zip(self._picker.update(people, shown_w, now),
-                                       self._hands):
-                if changed:
-                    picked.reset()
-
-        by_bodies = (self._bodies_seen is not None
-                     and now - self._bodies_seen <= BODY_MEMORY_SECONDS)
-        players = self._picker.players() if by_bodies else [None] * self._seats
-        # The players go first, so a hand exactly as near a player as someone
-        # else is the player's. A player the model has just lost sight of
-        # stays in, too: their seat is held for a moment, and the hands with it.
-        seated = [p for p in players if p is not None]
-        others = [p for p, seen in self._remembered
-                  if now - seen <= PERSON_MEMORY_SECONDS and p not in seated]
-        known = seated + others if by_bodies else []
-        rig.show_people(known, players)
-
-        chosen, remaining = [], hands
-        for side, (player, picker) in enumerate(zip(players, self._hands)):
-            judge = self._judge(side, player, known, shown_w) if by_bodies else None
-            # In Pong a player plays with one hand, and it is the raised one:
-            # the other hangs at their side. Elsewhere, the nearest hands.
-            rank = (lambda hand: -hand.landmarks_px[0][1]) if self._seats > 1 else None
-            picked = picker.pick(remaining, dt, frame_h, judge=judge, rank=rank)
-            chosen += picked
-            remaining = [hand for hand in remaining if hand not in picked]
-        return chosen
-
-    def _remember(self, people, now):
-        """Everyone seen now, plus anyone seen a moment ago and missed now."""
-        kept = [(person, seen) for person, seen in self._remembered
-                if now - seen <= PERSON_MEMORY_SECONDS
-                and not any(math.dist(person.centre, p.centre) <= max(person.size, 80)
-                            for p in people)]
-        self._remembered = kept + [(p, now) for p in people]
-        if people:
-            self._bodies_seen = now
-
-    def _judge(self, side, player, known, shown_w):
-        """How one seat sees a hand: its player's (MINE), someone else's
-        (THEIRS), or not plainly either (UNSURE)."""
-        def judge(hand):
-            person, clear = whose(hand, known)
-            if player is not None:
-                if person is player:
-                    return MINE if clear else UNSURE
-                return THEIRS if person is not None and clear else UNSURE
-            # Nobody seen in this seat -- Pong's other half, or a player the
-            # body model does not pick up. A hand near nobody may come in, on
-            # its own side; a hand near anybody is theirs.
-            if person is not None:
-                return THEIRS if clear else UNSURE
-            if self._seats > 1 and (hand.landmarks_px[9][0] < shown_w / 2) != (side == 0):
-                return UNSURE
-            return MINE
-        return judge
+        return self._players.pick(hands, dt, h)
 
     def close(self):
-        if self._pose is not None:
-            self._pose.close()
         self._landmarker.close()

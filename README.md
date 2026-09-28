@@ -6,12 +6,6 @@ dokunmadan, 2-3 metre uzaktan oynanacak sekilde tasarlandi.
 Butun arayuz el ile kullaniliyor: bir butonun uzerine parmak ucunuzu getirip
 **yumrugunuzu 1 saniye kapali tutunca** tiklaniyor.
 
-Kalabalik bir odada oynanabilir: oyun vucutlari da gorur ve yalnizca **en ondeki
-kisinin** ellerini kullanir (PONG'da ekranin iki yarisinin her birinde en ondeki
-kisi, kaldirdigi eliyle). Onunuzden gecen biri oyunu hemen kapamaz; birinin oyuncu
-olmasi icin bir sure belirgin sekilde daha onde durmasi gerekir. TEST acikken
-oyuncunun vucudu mavi, digerleri gri cizilir.
-
 ## Modlar
 
 | Mod | Nasil oynanir |
@@ -64,10 +58,8 @@ python setup_models.py
 PowerShell betik calistirmayi engellerse, `venv\Scripts\activate.bat` dosyasini
 normal komut isteminde (cmd) calistirin.
 
-`setup_models.py`, MediaPipe'in el ve vucut takibi modellerini `models/` klasorune indirir.
-Guncellemeden sonra da bir kez calistirin: yeni bir model eklenmis olabilir.
-Model dosyalari depoya dahil degildir. El modeli yoksa oyun acilmaz; vucut modeli
-yoksa oyun acilir ama kalabalikta kimin oynadigini ayirt edemez.
+`setup_models.py`, MediaPipe'in el takibi modelini `models/` klasorune indirir.
+Model dosyasi depoya dahil degildir, bu adim atlanirsa oyun acilmaz.
 
 ## Calistirma
 

@@ -17,7 +17,6 @@ import time
 
 import cv2
 
-from core.backdrop import Backdrop
 from core.hand_tracker import TRACKABLE_HAND_SPEED
 from core.paddles import HandPaddles
 from core.rig import draw_rig, rig_on
@@ -45,8 +44,9 @@ MAX_BOUNCE_ANGLE = math.radians(52)
 SERVE_DELAY = 0.7            # a pause after a point, so it can be seen
 
 # The ball is drawn against whatever the camera is pointing at, which is a
-# room, not a chosen backdrop: light ball on a dark room, dark ball on a
-# bright one (see core.backdrop).
+# room, not a chosen backdrop. Its colour is picked from that picture each
+# frame: light ball on a dark room, dark ball on a bright one. The reading is
+# eased over time, so someone walking past cannot make it flicker.
 BALL_LIGHT = (245, 245, 245)
 BALL_DARK = (25, 25, 30)
 BALL_RIM_MIX = 0.55          # the outline, halfway to the opposite tone
@@ -88,9 +88,9 @@ def _bat_targets(tracked, w):
     return ordered[0].end[1], ordered[-1].end[1]
 
 
-def _ball_tones(dark):
-    """The ball and its outline, for a dark backdrop or a bright one."""
-    if dark:
+def _ball_tones(brightness):
+    """The ball and its outline, for a backdrop of this brightness."""
+    if brightness < 128:
         ball, other = BALL_LIGHT, BALL_DARK
     else:
         ball, other = BALL_DARK, BALL_LIGHT
@@ -132,7 +132,7 @@ def run_pong_mode(cap, window_name, tracker):
     last_time = time.time()
     # coast=True: a bat carries on through a dropout rather than freezing
     bat_tracker = HandPaddles(1.0, 1.0, coast=True)
-    backdrop = Backdrop(BACKDROP_SMOOTHING)
+    backdrop = 128.0             # how bright the room is, eased frame to frame
 
     result = None
     while result is None:
@@ -144,8 +144,7 @@ def run_pong_mode(cap, window_name, tracker):
         dt = min(now - last_time, 0.05)
         last_time = now
 
-        # one player per half of the picture, each with the hand they raise
-        hands = tracker.process(frame, players=2)
+        hands = tracker.process(frame)
         clicked, progress_map = dwell.update(hands, buttons)
         if clicked == "menu":
             result = "menu"
@@ -202,7 +201,12 @@ def run_pong_mode(cap, window_name, tracker):
                     break
 
         # ================= draw =================
-        ball_color, rim_color = _ball_tones(backdrop.measure(frame, (0, TOOLBAR_H, w, h)))
+        # every eighth pixel is plenty to tell a dark room from a bright one
+        patch = frame[TOOLBAR_H::8, ::8]
+        measured = float(patch[:, :, 0].mean() * 0.114 + patch[:, :, 1].mean() * 0.587
+                         + patch[:, :, 2].mean() * 0.299)
+        backdrop += (measured - backdrop) * BACKDROP_SMOOTHING
+        ball_color, rim_color = _ball_tones(backdrop)
 
         _draw_court(frame, w, h)
         for i in (0, 1):

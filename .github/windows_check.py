@@ -59,7 +59,7 @@ class FakeTracker:
         self.pos = [[400.0, 400.0], [880.0, 400.0]]
         self.vel = [[0.0, 0.0], [0.0, 0.0]]
 
-    def process(self, frame, players=1):
+    def process(self, frame):
         hands = []
         for i in range(2):
             if self.rng.random() < 0.10:
@@ -73,7 +73,7 @@ class FakeTracker:
 
 
 class NoHands:
-    def process(self, frame, players=1):
+    def process(self, frame):
         return []
 
 
@@ -108,11 +108,9 @@ def main():
     def tracker():
         from core.hand_tracker import HandTracker
         t = HandTracker(num_hands=2)
-        assert t.sees_bodies, "vucut modeli yuklenemedi"
         found = t.process(np.zeros((H, W, 3), np.uint8))
-        found += t.process(np.zeros((H, W, 3), np.uint8), players=2)
         t.close()
-        return f"el + vucut modeli, bos karede {len(found)} el"
+        return f"bos karede {len(found)} el"
 
     def aspect():
         from core.window import screen_aspect
