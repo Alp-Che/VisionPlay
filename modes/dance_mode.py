@@ -48,7 +48,7 @@ WALLS_TO_WIDEST = 14         # the holes spread out to the widest gap by here
 # the player lasts without ever becoming impossible.
 WALL_SECONDS_START = 4.2
 WALL_SECONDS_END = 1.2
-WALL_SPEEDUP = 0.90
+WALL_SPEEDUP = 0.85
 # A beat between walls to see the verdict. It shortens with the walls, so a
 # player who is always through early still feels the tempo rise.
 PASSED_PAUSE = 0.55

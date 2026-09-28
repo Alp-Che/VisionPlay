@@ -15,10 +15,10 @@ Butun arayuz el ile kullaniliyor: bir butonun uzerine parmak ucunuzu getirip
 | **FRUIT NINJA** | Iki isaret parmaginizla meyveleri kesin, bombalara dokunmayin. Ust uste kestikce kombo buyur; saat kesince sure kazanirsiniz. |
 | **TOP SEKTIRME** | Topu elinizle havada tutun, yere dusurmeyin. |
 | **KOSTEBEK** | Alttan cikan kostebekleri elinizle geri sokun, kotu olanlara vurmayin. |
-| **PONG** | Iki kisilik. Herkes kendi tarafindaki raketi eliyle surer. |
+| **PONG** | Iki kisilik. Herkes kendi tarafindaki raketi eliyle surer; 3 sayiya ulasan kazanir. |
 | **DANS** | Duvar geliyor; iki elinizi deliklerine yerlestirip gecin. Delikler bir sagda bir solda, gitgide hizlanir. |
 
-Oyun bitince rekorunuz da gosterilir (TOP SEKTIRME icin en uzun seri, sag ustte). Rekorlar bilgisayarda saklanir (macOS: `~/Library/Application Support/VisionPlay`, Windows: `%APPDATA%\VisionPlay`).
+Oyun bitince rekorunuz da gosterilir (TOP SEKTIRME icin en uzun seri, sag ustte). Baslangic ekranindaki REKOR SIFIRLA dugmesi (onay icin iki kez basilir) hepsini siler. Rekorlar bilgisayarda saklanir (macOS: `~/Library/Application Support/VisionPlay`, Windows: `%APPDATA%\VisionPlay`).
 
 ## Windows: hazir surum (Python gerekmez)
 

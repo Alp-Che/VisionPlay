@@ -1,13 +1,20 @@
 """Title screen: one BAŞLA button, opened with the usual fist dwell."""
+import time
+
 import cv2
 
-from core import assets, settings
+from core import assets, records, settings
 from core.pixel_font import draw_text
 from core.transform import integer_scale_for
 from core.rig import rig_on, set_rig
 from core.window import handle_key
 from core.ui import Button, DwellClickController
 
+# Wiping the records cannot be undone, so it asks first: the button turns red
+# and has to be pressed a second time within this long. A stray fist over it
+# does nothing on its own.
+RESET_CONFIRM_SECONDS = 4.0
+RESET_DONE_SECONDS = 1.5
 
 def run_start(cap, window_name, tracker):
     """Returns 'menu', 'quit', or 'start' to be laid out again."""
@@ -27,7 +34,9 @@ def run_start(cap, window_name, tracker):
     # as one more. The number is on the button so it is clear which is on.
     camera_btn = Button("camera", f"KAMERA {cap.camera_index + 1}", 150, 20, 170, 50,
                         color=(38, 38, 38))
-    buttons = [start_btn, quit_btn, test_btn, camera_btn]
+    reset_btn = Button("reset", "REKOR SIFIRLA", 330, 20, 220, 50, color=(38, 38, 38))
+    buttons = [start_btn, quit_btn, test_btn, camera_btn, reset_btn]
+    confirm_until, done_until = 0.0, 0.0
 
     result = None
     while result is None:
@@ -46,6 +55,14 @@ def run_start(cap, window_name, tracker):
         else:
             draw_text(frame, "VISIONPLAY", (w // 2, h // 2 - 140), scale=5, anchor="center")
 
+        now = time.time()
+        if now < done_until:
+            reset_btn.label, reset_btn.color = "SIFIRLANDI", (26, 60, 30)
+        elif now < confirm_until:
+            reset_btn.label, reset_btn.color = "EMİN MİSİN?", (30, 30, 120)
+        else:
+            reset_btn.label, reset_btn.color = "REKOR SIFIRLA", (38, 38, 38)
+
         for btn in buttons:
             btn.draw(frame, progress=progress_map.get(btn.id, 0.0),
                      hovered=dwell.hovered_id() == btn.id,
@@ -62,6 +79,12 @@ def run_start(cap, window_name, tracker):
             result = "quit"
         elif clicked == "test":
             set_rig(not rig_on())
+        elif clicked == "reset":
+            if now < confirm_until:
+                records.clear()
+                confirm_until, done_until = 0.0, now + RESET_DONE_SECONDS
+            elif now >= done_until:
+                confirm_until = now + RESET_CONFIRM_SECONDS
         elif clicked == "camera":
             settings.put("kamera", cap.next_camera())
             # a different camera can give a picture of a different size, so

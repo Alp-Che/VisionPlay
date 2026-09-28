@@ -53,6 +53,13 @@ def _save():
         pass
 
 
+def clear():
+    """Forgets every record."""
+    global _cache
+    _cache = {}
+    _save()
+
+
 def best(game):
     return _load().get(game, 0)
 

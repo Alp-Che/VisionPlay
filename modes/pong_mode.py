@@ -1,5 +1,5 @@
-"""Pong, for two people standing side by side. It has no clock: it runs until
-somebody presses MENU, which is what a game two people take turns at wants.
+"""Pong, for two people standing side by side. It has no clock: the first to
+WIN_SCORE points wins, and YENİDEN starts the next game.
 
 Each player moves the bat on their own side with one hand. Which bat a hand
 gets is decided by where it is: with two hands in view the leftmost takes the
@@ -42,6 +42,7 @@ BALL_MAX_HAND_DEMAND = TRACKABLE_HAND_SPEED
 # bat and the ball leaves at a steeper angle than off the middle.
 MAX_BOUNCE_ANGLE = math.radians(52)
 SERVE_DELAY = 0.7            # a pause after a point, so it can be seen
+WIN_SCORE = 3
 
 # The ball is drawn against whatever the camera is pointing at, which is a
 # room, not a chosen backdrop. Its colour is picked from that picture each
@@ -127,6 +128,7 @@ def run_pong_mode(cap, window_name, tracker):
     bats = [h / 2.0, h / 2.0]                 # centre y of each bat
     bat_x = (inset, w - inset - bat_w)
     scores = [0, 0]
+    winner = None                # 0 left, 1 right, once somebody has won
     ball = _serve(w, h, random.choice((-1, 1)))
     serve_at = time.time() + SERVE_DELAY
     last_time = time.time()
@@ -151,6 +153,7 @@ def run_pong_mode(cap, window_name, tracker):
             break
         elif clicked == "restart":
             scores = [0, 0]
+            winner = None
             ball = _serve(w, h, random.choice((-1, 1)))
             serve_at = now + SERVE_DELAY
 
@@ -161,7 +164,7 @@ def run_pong_mode(cap, window_name, tracker):
                 bats[i] = min(max(float(target), TOOLBAR_H + bat_h / 2), h - bat_h / 2)
 
         # --- the ball, in small steps so a bat cannot be passed through ---
-        if now >= serve_at:
+        if winner is None and now >= serve_at:
             travel = math.hypot(ball['vx'], ball['vy']) * dt
             steps = max(1, int(travel / (bat_w * 0.5)) + 1)
             for _ in range(steps):
@@ -196,6 +199,8 @@ def run_pong_mode(cap, window_name, tracker):
                 if ball["x"] < -ball_r * 3 or ball["x"] > w + ball_r * 3:
                     conceded = 0 if ball["x"] < 0 else 1
                     scores[1 - conceded] += 1
+                    if scores[1 - conceded] >= WIN_SCORE:
+                        winner = 1 - conceded
                     ball = _serve(w, h, -1 if conceded == 1 else 1)
                     serve_at = now + SERVE_DELAY
                     break
@@ -214,10 +219,11 @@ def run_pong_mode(cap, window_name, tracker):
             cv2.rectangle(frame, (int(bat_x[i]), y0),
                           (int(bat_x[i]) + bat_w, int(y0 + bat_h)),
                           BAT_COLORS[i], -1, cv2.LINE_AA)
-        cv2.circle(frame, (int(ball["x"]), int(ball["y"])), ball_r,
-                   ball_color, -1, cv2.LINE_AA)
-        cv2.circle(frame, (int(ball["x"]), int(ball["y"])), ball_r,
-                   rim_color, 2, cv2.LINE_AA)
+        if winner is None:
+            cv2.circle(frame, (int(ball["x"]), int(ball["y"])), ball_r,
+                       ball_color, -1, cv2.LINE_AA)
+            cv2.circle(frame, (int(ball["x"]), int(ball["y"])), ball_r,
+                       rim_color, 2, cv2.LINE_AA)
 
         for btn in buttons:
             btn.draw(frame, progress=progress_map.get(btn.id, 0.0),
@@ -229,7 +235,12 @@ def run_pong_mode(cap, window_name, tracker):
         draw_panel(frame, str(scores[1]), (int(w * 0.72), TOOLBAR_H + 50),
                    scale=5, anchor="center")
 
-        if not hands:
+        if winner is not None:
+            draw_panel(frame, "SOLDAKİ KAZANDI" if winner == 0 else "SAĞDAKİ KAZANDI",
+                       (w // 2, h // 2 - 30), scale=4, anchor="center", plate=(0, 60, 130))
+            draw_panel(frame, "YENİDEN DÜĞMESİNE BAS", (w // 2, h // 2 + 50),
+                       scale=2, anchor="center")
+        elif not hands:
             draw_panel(frame, "ELLERİNİZİ KAMERAYA GÖSTERİN", (w // 2, h // 2),
                        scale=2, anchor="center", plate=(0, 90, 140))
 
