@@ -86,6 +86,11 @@ class FakeCamera:
     def describe(self):
         return "1280X720 MJPG 30 FPS"
 
+    has_settings = True
+
+    def open_settings(self):
+        pass
+
     def isOpened(self):
         return True
 

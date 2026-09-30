@@ -28,6 +28,13 @@ def _open_capture(index):
     return cv2.VideoCapture(index)
 
 
+def _is_dshow(cap):
+    try:
+        return cap.getBackendName() == "DSHOW"
+    except cv2.error:
+        return False
+
+
 def _configure(cap, width, height, fps):
     """Asks for the size and rate -- and, on DirectShow, for MJPG.
 
@@ -42,11 +49,7 @@ def _configure(cap, width, height, fps):
     format is applied at whatever size is set at the time. So the rate goes
     first, then the size, and the format last.
     """
-    try:
-        dshow = cap.getBackendName() == "DSHOW"
-    except cv2.error:
-        dshow = False
-    if dshow:
+    if _is_dshow(cap):
         cap.set(cv2.CAP_PROP_FPS, fps)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
@@ -99,6 +102,24 @@ class CameraStream:
             elapsed = time.monotonic() - since
             if elapsed >= 1.0:
                 self.fps, counted, since = counted / elapsed, 0, time.monotonic()
+
+    @property
+    def has_settings(self):
+        """Whether the camera's own settings window can be opened -- only on
+        DirectShow, which is to say on Windows."""
+        return self._cap.isOpened() and _is_dshow(self._cap)
+
+    def open_settings(self):
+        """Opens the camera driver's own settings window, beside the game.
+
+        It is there for what OpenCV has no setting for, above all the
+        power-line frequency (anti-flicker): a camera set for 60 Hz under
+        lamps on 50 Hz mains -- as in Turkey -- shows bands rolling through
+        the picture. DirectShow opens the window on a thread of its own, so
+        the game keeps running.
+        """
+        if self.has_settings:
+            self._cap.set(cv2.CAP_PROP_SETTINGS, 1)
 
     def describe(self):
         """What the camera is really giving: size, format and frame rate."""
@@ -170,6 +191,13 @@ class ScreenView:
 
     def describe(self):
         return self.cap.describe()
+
+    @property
+    def has_settings(self):
+        return self.cap.has_settings
+
+    def open_settings(self):
+        self.cap.open_settings()
 
     def next_camera(self):
         """Moves on to the next camera that works, wrapping round.

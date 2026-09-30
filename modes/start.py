@@ -7,7 +7,7 @@ from core import assets, records, settings
 from core.pixel_font import draw_text
 from core.transform import integer_scale_for
 from core.rig import rig_on, set_rig
-from core.window import handle_key
+from core.window import handle_key, set_fullscreen
 from core.ui import Button, DwellClickController, draw_panel
 
 # Wiping the records cannot be undone, so it asks first: the button turns red
@@ -36,6 +36,12 @@ def run_start(cap, window_name, tracker):
                         color=(38, 38, 38))
     reset_btn = Button("reset", "REKOR SIFIRLA", 330, 20, 220, 50, color=(38, 38, 38))
     buttons = [start_btn, quit_btn, test_btn, camera_btn, reset_btn]
+    # The camera's own settings window, on Windows. What it is for above all
+    # is anti-flicker: set it to 50 Hz where the mains is 50 Hz, or lamps
+    # make bands roll through the picture.
+    if cap.has_settings:
+        buttons.append(Button("camera_settings", "KAMERA AYARI", 560, 20, 200, 50,
+                              color=(38, 38, 38)))
     confirm_until, done_until = 0.0, 0.0
 
     result = None
@@ -90,6 +96,10 @@ def run_start(cap, window_name, tracker):
                 confirm_until, done_until = 0.0, now + RESET_DONE_SECONDS
             elif now >= done_until:
                 confirm_until = now + RESET_CONFIRM_SECONDS
+        elif clicked == "camera_settings":
+            # a full-screen game would hide the window behind itself
+            set_fullscreen(window_name, False)
+            cap.open_settings()
         elif clicked == "camera":
             settings.put("kamera", cap.next_camera())
             # a different camera can give a picture of a different size, so

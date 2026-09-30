@@ -77,6 +77,14 @@ kameraniza erismesine izin verin" acik olmalidir.
 Baslangic ekranindaki **KAMERA** dugmesi takili kameralar arasinda gecer;
 secilen kamera bir sonraki acilista da kullanilir.
 
+### Ekranda kayan bantlar / dalgalanma (Windows)
+
+Lamba isigi altinda goruntude bantlar kayiyorsa kamera 60 Hz'e ayarlidir; Turkiye'de
+sebeke 50 Hz'dir. Baslangic ekranindaki **KAMERA AYARI** dugmesi kameranin kendi ayar
+penceresini acar: "Video Proc Amp" sekmesinde **PowerLine Frequency (Anti Flicker)**
+ayarini **50 Hz** yapin. Ayar kameranin kendisine aittir; kamera cikarilip takilinca
+sifirlanirsa tekrar yapin.
+
 ### Telefonu kamera olarak kullanma
 
 - **Windows 11 + Android:** Ayarlar > Bluetooth ve cihazlar > Mobil cihazlar'dan
