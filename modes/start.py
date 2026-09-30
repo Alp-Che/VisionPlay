@@ -8,7 +8,7 @@ from core.pixel_font import draw_text
 from core.transform import integer_scale_for
 from core.rig import rig_on, set_rig
 from core.window import handle_key
-from core.ui import Button, DwellClickController
+from core.ui import Button, DwellClickController, draw_panel
 
 # Wiping the records cannot be undone, so it asks first: the button turns red
 # and has to be pressed a second time within this long. A stray fist over it
@@ -62,6 +62,11 @@ def run_start(cap, window_name, tracker):
             reset_btn.label, reset_btn.color = "EMİN MİSİN?", (30, 30, 120)
         else:
             reset_btn.label, reset_btn.color = "REKOR SIFIRLA", (38, 38, 38)
+
+        if rig_on():
+            # for when a camera stutters: whether it is the camera sending
+            # few frames, or the game being slow with the ones it gets
+            draw_panel(frame, f"KAMERA: {cap.describe()}", (34, 90), scale=2)
 
         for btn in buttons:
             btn.draw(frame, progress=progress_map.get(btn.id, 0.0),

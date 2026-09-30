@@ -83,6 +83,9 @@ class FakeCamera:
     def next_camera(self):
         return 0
 
+    def describe(self):
+        return "1280X720 MJPG 30 FPS"
+
     def isOpened(self):
         return True
 

@@ -28,6 +28,37 @@ def _open_capture(index):
     return cv2.VideoCapture(index)
 
 
+def _configure(cap, width, height, fps):
+    """Asks for the size and rate -- and, on DirectShow, for MJPG.
+
+    A USB webcam left to itself on DirectShow often sends uncompressed frames,
+    and 1280x720 uncompressed does not fit down USB 2.0 at more than five to
+    ten frames a second: the game stutters while the computer sits idle.
+    macOS picks the compressed format on its own, which is why the same camera
+    runs smoothly there. A laptop's built-in camera is not on that cable.
+
+    The order matters on DirectShow, which restarts the stream for each of
+    these: the frame rate restarts it in the camera's default format, and the
+    format is applied at whatever size is set at the time. So the rate goes
+    first, then the size, and the format last.
+    """
+    try:
+        dshow = cap.getBackendName() == "DSHOW"
+    except cv2.error:
+        dshow = False
+    if dshow:
+        cap.set(cv2.CAP_PROP_FPS, fps)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+    else:
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        cap.set(cv2.CAP_PROP_FPS, fps)
+    # keep the driver's backlog as short as it will allow
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+
 # how many camera numbers are tried when looking for the next one: a laptop's
 # own camera, a phone, a capture card and a virtual camera or two
 MAX_CAMERAS = 5
@@ -39,11 +70,10 @@ class CameraStream:
         self.size = (width, height, fps)
         self._cap = _open_capture(index)
         if self._cap.isOpened():
-            self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-            self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-            self._cap.set(cv2.CAP_PROP_FPS, fps)
-            # keep the driver's backlog as short as it will allow
-            self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            _configure(self._cap, width, height, fps)
+        # frames a second the camera actually delivers, measured, since what
+        # it was asked for and what it does can be far apart
+        self.fps = 0.0
 
         self._frame = None
         self._seq = 0
@@ -56,6 +86,7 @@ class CameraStream:
             self._thread.start()
 
     def _pump(self):
+        counted, since = 0, time.monotonic()
         while self._running:
             ok, frame = self._cap.read()
             if not ok:
@@ -64,6 +95,20 @@ class CameraStream:
             with self._lock:
                 self._frame = frame
                 self._seq += 1
+            counted += 1
+            elapsed = time.monotonic() - since
+            if elapsed >= 1.0:
+                self.fps, counted, since = counted / elapsed, 0, time.monotonic()
+
+    def describe(self):
+        """What the camera is really giving: size, format and frame rate."""
+        w = int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        h = int(self._cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        code = int(self._cap.get(cv2.CAP_PROP_FOURCC))
+        fourcc = "".join(chr((code >> 8 * i) & 0xFF) for i in range(4))
+        fourcc = "".join(c for c in fourcc if c.isalnum()).upper()
+        # macOS does not say which format it chose; leave it out rather than guess
+        return " ".join(part for part in (f"{w}X{h}", fourcc, f"{self.fps:.0f} FPS") if part)
 
     def isOpened(self):
         return self._cap.isOpened()
@@ -122,6 +167,9 @@ class ScreenView:
     @property
     def camera_index(self):
         return self.cap.index
+
+    def describe(self):
+        return self.cap.describe()
 
     def next_camera(self):
         """Moves on to the next camera that works, wrapping round.
