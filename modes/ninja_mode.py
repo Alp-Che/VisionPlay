@@ -30,7 +30,10 @@ TOOLBAR_H = 90
 # where a hand spans about a sixteenth of the picture's height -- and then held
 # there. They used to follow the player's own hand, which made the fruit grow
 # as the player walked in: stepping up to the screen was the easy way to win.
-FRUIT_RADIUS_FRAC = 0.053     # of frame height
+FRUIT_RADIUS_FRAC = 0.065     # of frame height
+# Bombs stay the size the fruit used to be: bigger fruit is easier to cut,
+# bigger bombs would only be harder to miss.
+BOMB_RADIUS_FRAC = 0.053
 FINGER_RADIUS_FRAC = 0.0075   # forgiveness around the fingertip
 # Below this the tip is resting, not cutting. Without it a finger parked in
 # the fruits' path would score off every one that fell onto it.
@@ -254,6 +257,7 @@ def run_ninja_mode(cap, window_name, tracker):
         running = remaining > 0
 
         fruit_radius = FRUIT_RADIUS_FRAC * h
+        bomb_radius = BOMB_RADIUS_FRAC * h
         finger_r = FINGER_RADIUS_FRAC * h
         min_swipe = MIN_SWIPE_FRAC * h
 
@@ -265,7 +269,9 @@ def run_ninja_mode(cap, window_name, tracker):
         if running and not resting and now >= next_spawn:
             burst = FRENZY_BURST if frenzy else (1, 1, 2)
             for _ in range(random.choice(burst)):
-                fruit = _spawn_fruit(w, h, fruit_radius, _pick_kind(frenzy))
+                kind = _pick_kind(frenzy)
+                fruit = _spawn_fruit(w, h, bomb_radius if kind == "bomb" else fruit_radius,
+                                     kind)
                 # remembered on the fruit itself, not read off the clock, so a
                 # frenzy fruit still counts as one if it is cut after it ends
                 fruit["frenzy"] = frenzy
