@@ -100,12 +100,11 @@ SHEET_FRUITS = [
     (26, 0, 4),    # watermelon
 ]
 
-# The bomb, drawn in the same style. Its body is not centred in its cell --
-# the fuse takes the top-right corner -- so it is placed and spun about the
-# body's own centre, and sized so the body matches the bomb's reach.
+# The bomb's picture. Its body is not centred -- the fuse sticks out to one
+# side -- so it is placed and spun about the body's own centre and sized so
+# the body matches the bomb's reach. Both are read off the picture itself
+# (_bomb_shape), so a redrawn bomb lines up without anything set by hand.
 BOMB_ART = "ninja/bomb.png"
-BOMB_CENTRE = (6.5 / 16, 9.5 / 16)   # of the image
-BOMB_BODY_PX = 10.6                  # body and outline across, in its pixels
 
 # Drawn fruit, for when the sheet is missing. (rind, flesh)
 FRUIT_COLORS = [
@@ -147,6 +146,46 @@ def _sheet_cell(sheet, column, row):
                  column * SHEET_CELL:(column + 1) * SHEET_CELL]
     ys, xs = np.nonzero(cell[:, :, 3])
     return np.ascontiguousarray(cell[ys.min():ys.max() + 1, xs.min():xs.max() + 1])
+
+
+def _native_pixels(img):
+    """Pixel art saved already enlarged, back to one pixel per art pixel.
+
+    Only whole-number zooms keep pixel art crisp, and on a picture saved at
+    four times its size the only zooms left are one and two -- too coarse to
+    match it to anything. Shrunk back, it can be sized like the rest.
+    """
+    h, w = img.shape[:2]
+    for k in (8, 6, 5, 4, 3, 2):
+        if h % k or w % k:
+            continue
+        blocks = img.reshape(h // k, k, w // k, k, img.shape[2])
+        if (blocks == blocks[:, :1, :, :1]).all():
+            return np.ascontiguousarray(img[::k, ::k])
+    return img
+
+
+def _bomb_shape(img):
+    """(body centre as a fraction of the picture, body width in its pixels).
+
+    The widest circle that fits inside the drawn part is the body: a thin
+    fuse adds nothing to it, wherever it sticks out.
+    """
+    solid = cv2.copyMakeBorder((img[:, :, 3] > 0).astype(np.uint8), 1, 1, 1, 1,
+                               cv2.BORDER_CONSTANT, value=0)
+    depth = cv2.distanceTransform(solid, cv2.DIST_L2, 5)
+    y, x = np.unravel_index(int(np.argmax(depth)), depth.shape)
+    h, w = img.shape[:2]
+    return ((x - 0.5) / w, (y - 0.5) / h), 2 * float(depth.max())
+
+
+def _load_bomb_art():
+    """(picture, body centre, body width) -- or None to draw the bomb instead."""
+    img = assets.load(BOMB_ART)
+    if img is None:
+        return None
+    img = _native_pixels(img)
+    return (img,) + _bomb_shape(img)
 
 
 def _load_fruit_art():
@@ -203,9 +242,10 @@ def _spawn_fruit(w, h, radius, kind="fruit", art=None, bomb_art=None):
 def _draw_fruit(frame, fruit):
     art = fruit.get("art")
     if art is not None and fruit["kind"] == "bomb":
-        size = 2 * fruit["r"] * max(art.shape[:2]) / BOMB_BODY_PX
-        place_rotated(frame, art, (fruit["x"], fruit["y"]), fruit["angle"], int(size),
-                      pivot=BOMB_CENTRE)
+        img, centre, body = art
+        size = 2 * fruit["r"] * max(img.shape[:2]) / body
+        place_rotated(frame, img, (fruit["x"], fruit["y"]), fruit["angle"], int(size),
+                      pivot=centre)
         return
     if art is not None:
         place_rotated(frame, art[0], (fruit["x"], fruit["y"]), fruit["angle"],
@@ -259,9 +299,10 @@ def _pieces(fruit):
     if art is None:
         return (None, None), 2 * fruit["r"]
     if fruit.get("kind") == "bomb":
-        middle = int(round(BOMB_CENTRE[0] * art.shape[1]))
-        pieces = (np.ascontiguousarray(art[:, :middle]), np.ascontiguousarray(art[:, middle:]))
-        return pieces, 2 * fruit["r"] * max(art.shape[:2]) / BOMB_BODY_PX
+        img, centre, body = art
+        middle = int(round(centre[0] * img.shape[1]))
+        pieces = (np.ascontiguousarray(img[:, :middle]), np.ascontiguousarray(img[:, middle:]))
+        return pieces, 2 * fruit["r"] * max(img.shape[:2]) / body
     return (art[1], art[2]), 2 * fruit["r"]
 
 
@@ -287,7 +328,7 @@ def run_ninja_mode(cap, window_name, tracker):
     dwell = DwellClickController()
     record = RoundRecord("ninja")
     fruit_art = _load_fruit_art()
-    bomb_art = assets.load(BOMB_ART)
+    bomb_art = _load_bomb_art()
     # landmark 8 is the index fingertip. coast is left on: tracking gives out
     # exactly when a hand is swung hardest, and a cut already under way should
     # carry through rather than stop dead.
