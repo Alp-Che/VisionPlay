@@ -100,6 +100,13 @@ SHEET_FRUITS = [
     (26, 0, 4),    # watermelon
 ]
 
+# The bomb, drawn in the same style. Its body is not centred in its cell --
+# the fuse takes the top-right corner -- so it is placed and spun about the
+# body's own centre, and sized so the body matches the bomb's reach.
+BOMB_ART = "ninja/bomb.png"
+BOMB_CENTRE = (6.5 / 16, 9.5 / 16)   # of the image
+BOMB_BODY_PX = 10.6                  # body and outline across, in its pixels
+
 # Drawn fruit, for when the sheet is missing. (rind, flesh)
 FRUIT_COLORS = [
     ((40, 120, 40), (70, 70, 220)),    # watermelon
@@ -154,10 +161,13 @@ def _load_fruit_art():
     return art
 
 
-def _spawn_fruit(w, h, radius, kind="fruit", art=None):
+def _spawn_fruit(w, h, radius, kind="fruit", art=None, bomb_art=None):
     """Thrown in from below, or in from the bottom-left / bottom-right corner
     so they arc across the screen instead of always rising straight up."""
-    look = random.choice(art) if art and kind == "fruit" else None
+    if kind == "bomb":
+        look = bomb_art
+    else:
+        look = random.choice(art) if art and kind == "fruit" else None
     if kind == "bomb":
         rind, flesh = (24, 24, 28), (44, 44, 52)
     elif kind == "time":
@@ -191,8 +201,14 @@ def _spawn_fruit(w, h, radius, kind="fruit", art=None):
 
 
 def _draw_fruit(frame, fruit):
-    if fruit.get("art") is not None:
-        place_rotated(frame, fruit["art"][0], (fruit["x"], fruit["y"]), fruit["angle"],
+    art = fruit.get("art")
+    if art is not None and fruit["kind"] == "bomb":
+        size = 2 * fruit["r"] * max(art.shape[:2]) / BOMB_BODY_PX
+        place_rotated(frame, art, (fruit["x"], fruit["y"]), fruit["angle"], int(size),
+                      pivot=BOMB_CENTRE)
+        return
+    if art is not None:
+        place_rotated(frame, art[0], (fruit["x"], fruit["y"]), fruit["angle"],
                       int(2 * fruit["r"]))
         return
     center = (int(fruit["x"]), int(fruit["y"]))
@@ -222,7 +238,7 @@ def _draw_fruit(frame, fruit):
 def _draw_half(frame, half):
     if half.get("art") is not None:
         place_rotated(frame, half["art"], (half["x"], half["y"]), half["angle"],
-                      int(2 * half["r"]))
+                      int(half["size"]))
         return
     center = (int(half["x"]), int(half["y"]))
     radius = int(half["r"])
@@ -232,17 +248,34 @@ def _draw_half(frame, half):
                 half["flesh"], -1, cv2.LINE_AA)
 
 
+def _pieces(fruit):
+    """What each half looks like, and how big to draw it.
+
+    Fruit halves show the cut face, one of them mirrored. A bomb has no cut
+    face to show, so its picture is broken down the middle of its body, each
+    piece kept at the whole bomb's scale.
+    """
+    art = fruit.get("art")
+    if art is None:
+        return (None, None), 2 * fruit["r"]
+    if fruit.get("kind") == "bomb":
+        middle = int(round(BOMB_CENTRE[0] * art.shape[1]))
+        pieces = (np.ascontiguousarray(art[:, :middle]), np.ascontiguousarray(art[:, middle:]))
+        return pieces, 2 * fruit["r"] * max(art.shape[:2]) / BOMB_BODY_PX
+    return (art[1], art[2]), 2 * fruit["r"]
+
+
 def _split(fruit, cut_angle):
     halves = []
     normal = (-math.sin(cut_angle), math.cos(cut_angle))
+    pieces, size = _pieces(fruit)
     for side in (1, -1):
         halves.append({
             "x": fruit["x"], "y": fruit["y"],
             "vx": fruit["vx"] + normal[0] * 190 * side,
             "vy": fruit["vy"] + normal[1] * 190 * side - 60,
             "r": fruit["r"], "rind": fruit["rind"], "flesh": fruit["flesh"],
-            # both halves show the cut face, one of them mirrored
-            "art": fruit["art"][1 if side > 0 else 2] if fruit.get("art") is not None else None,
+            "art": pieces[0 if side > 0 else 1], "size": size,
             "angle": cut_angle + (0 if side > 0 else math.pi),
             "spin": fruit["spin"] + side * 2.0,
         })
@@ -254,6 +287,7 @@ def run_ninja_mode(cap, window_name, tracker):
     dwell = DwellClickController()
     record = RoundRecord("ninja")
     fruit_art = _load_fruit_art()
+    bomb_art = assets.load(BOMB_ART)
     # landmark 8 is the index fingertip. coast is left on: tracking gives out
     # exactly when a hand is swung hardest, and a cut already under way should
     # carry through rather than stop dead.
@@ -328,7 +362,7 @@ def run_ninja_mode(cap, window_name, tracker):
             for _ in range(random.choice(burst)):
                 kind = _pick_kind(frenzy)
                 fruit = _spawn_fruit(w, h, bomb_radius if kind == "bomb" else fruit_radius,
-                                     kind, fruit_art)
+                                     kind, fruit_art, bomb_art)
                 # remembered on the fruit itself, not read off the clock, so a
                 # frenzy fruit still counts as one if it is cut after it ends
                 fruit["frenzy"] = frenzy
