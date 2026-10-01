@@ -15,10 +15,13 @@ import random
 import time
 
 import cv2
+import numpy as np
 
+from core import assets
 from core.paddles import HandPaddles
 from core.pixel_font import draw_text
 from core.rig import draw_rig
+from core.transform import place_rotated
 from core.window import handle_key
 from core.records import RoundRecord
 from core.ui import (PANEL_COLOR, Button, DwellClickController, draw_panel,
@@ -30,7 +33,7 @@ TOOLBAR_H = 90
 # where a hand spans about a sixteenth of the picture's height -- and then held
 # there. They used to follow the player's own hand, which made the fruit grow
 # as the player walked in: stepping up to the screen was the easy way to win.
-FRUIT_RADIUS_FRAC = 0.065     # of frame height
+FRUIT_RADIUS_FRAC = 0.08      # of frame height
 # Bombs stay the size the fruit used to be: bigger fruit is easier to cut,
 # bigger bombs would only be harder to miss.
 BOMB_RADIUS_FRAC = 0.053
@@ -76,7 +79,28 @@ FRENZY_BURST = (1, 2, 2)
 # A breather once it ends: nothing is thrown for this long.
 FRENZY_REST = 2.0
 
-# (rind, flesh)
+# The fruit art (assets/ninja/fruits.png) is a sheet of 16 px cells: a column
+# per fruit, whole fruit in the upper rows and cut ones below. Only some of it
+# is used -- round fruit that reads at a glance from across the room, each
+# with a cut face to show once it is sliced. The small and straggly ones
+# (grapes, cherries, berries, bananas) and the vegetables stay on the sheet.
+FRUIT_SHEET = "ninja/fruits.png"
+SHEET_CELL = 16
+# (column, row of the whole fruit, row of its cut half)
+SHEET_FRUITS = [
+    (0, 0, 5),     # red apple
+    (1, 0, 5),     # green apple
+    (9, 1, 4),     # orange
+    (12, 0, 5),    # peach
+    (13, 0, 4),    # pomegranate
+    (17, 0, 5),    # lime
+    (18, 0, 5),    # lemon
+    (19, 0, 5),    # kiwi
+    (22, 1, 5),    # coconut
+    (26, 0, 4),    # watermelon
+]
+
+# Drawn fruit, for when the sheet is missing. (rind, flesh)
 FRUIT_COLORS = [
     ((40, 120, 40), (70, 70, 220)),    # watermelon
     ((30, 130, 240), (90, 190, 250)),  # orange
@@ -109,9 +133,31 @@ def _pick_kind(frenzy):
     return "fruit"
 
 
-def _spawn_fruit(w, h, radius, kind="fruit"):
+def _sheet_cell(sheet, column, row):
+    """One sprite off the sheet, trimmed to its drawn pixels so that its size
+    on screen is the fruit's own size, not its cell's."""
+    cell = sheet[row * SHEET_CELL:(row + 1) * SHEET_CELL,
+                 column * SHEET_CELL:(column + 1) * SHEET_CELL]
+    ys, xs = np.nonzero(cell[:, :, 3])
+    return np.ascontiguousarray(cell[ys.min():ys.max() + 1, xs.min():xs.max() + 1])
+
+
+def _load_fruit_art():
+    """[(whole, cut, cut mirrored), ...] -- or [] to draw the fruit instead."""
+    sheet = assets.load(FRUIT_SHEET)
+    if sheet is None:
+        return []
+    art = []
+    for column, whole_row, cut_row in SHEET_FRUITS:
+        cut = _sheet_cell(sheet, column, cut_row)
+        art.append((_sheet_cell(sheet, column, whole_row), cut, cv2.flip(cut, 1)))
+    return art
+
+
+def _spawn_fruit(w, h, radius, kind="fruit", art=None):
     """Thrown in from below, or in from the bottom-left / bottom-right corner
     so they arc across the screen instead of always rising straight up."""
+    look = random.choice(art) if art and kind == "fruit" else None
     if kind == "bomb":
         rind, flesh = (24, 24, 28), (44, 44, 52)
     elif kind == "time":
@@ -128,7 +174,7 @@ def _spawn_fruit(w, h, radius, kind="fruit"):
             "y": random.uniform(h * 0.72, h * 0.96),
             "vx": random.uniform(380, 620) * (1 if from_left else -1),
             "vy": -math.sqrt(2 * GRAVITY * rise),
-            "r": radius, "rind": rind, "flesh": flesh, "kind": kind,
+            "r": radius, "rind": rind, "flesh": flesh, "kind": kind, "art": look,
             "spin": random.uniform(-3, 3), "angle": 0.0,
         }
 
@@ -139,12 +185,16 @@ def _spawn_fruit(w, h, radius, kind="fruit"):
         "x": x, "y": h + radius,
         "vx": random.uniform(-140, 140) + (w / 2 - x) * 0.35,
         "vy": -math.sqrt(2 * GRAVITY * rise),
-        "r": radius, "rind": rind, "flesh": flesh, "kind": kind,
+        "r": radius, "rind": rind, "flesh": flesh, "kind": kind, "art": look,
         "spin": random.uniform(-3, 3), "angle": 0.0,
     }
 
 
 def _draw_fruit(frame, fruit):
+    if fruit.get("art") is not None:
+        place_rotated(frame, fruit["art"][0], (fruit["x"], fruit["y"]), fruit["angle"],
+                      int(2 * fruit["r"]))
+        return
     center = (int(fruit["x"]), int(fruit["y"]))
     radius = int(fruit["r"])
     cv2.circle(frame, center, radius, fruit["rind"], -1, cv2.LINE_AA)
@@ -170,6 +220,10 @@ def _draw_fruit(frame, fruit):
 
 
 def _draw_half(frame, half):
+    if half.get("art") is not None:
+        place_rotated(frame, half["art"], (half["x"], half["y"]), half["angle"],
+                      int(2 * half["r"]))
+        return
     center = (int(half["x"]), int(half["y"]))
     radius = int(half["r"])
     start = math.degrees(half["angle"])
@@ -187,6 +241,8 @@ def _split(fruit, cut_angle):
             "vx": fruit["vx"] + normal[0] * 190 * side,
             "vy": fruit["vy"] + normal[1] * 190 * side - 60,
             "r": fruit["r"], "rind": fruit["rind"], "flesh": fruit["flesh"],
+            # both halves show the cut face, one of them mirrored
+            "art": fruit["art"][1 if side > 0 else 2] if fruit.get("art") is not None else None,
             "angle": cut_angle + (0 if side > 0 else math.pi),
             "spin": fruit["spin"] + side * 2.0,
         })
@@ -197,6 +253,7 @@ def run_ninja_mode(cap, window_name, tracker):
     """Returns 'menu' or 'quit'."""
     dwell = DwellClickController()
     record = RoundRecord("ninja")
+    fruit_art = _load_fruit_art()
     # landmark 8 is the index fingertip. coast is left on: tracking gives out
     # exactly when a hand is swung hardest, and a cut already under way should
     # carry through rather than stop dead.
@@ -271,7 +328,7 @@ def run_ninja_mode(cap, window_name, tracker):
             for _ in range(random.choice(burst)):
                 kind = _pick_kind(frenzy)
                 fruit = _spawn_fruit(w, h, bomb_radius if kind == "bomb" else fruit_radius,
-                                     kind)
+                                     kind, fruit_art)
                 # remembered on the fruit itself, not read off the clock, so a
                 # frenzy fruit still counts as one if it is cut after it ends
                 fruit["frenzy"] = frenzy

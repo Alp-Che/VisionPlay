@@ -25,7 +25,6 @@ from core.transform import integer_scale_for, place_rotated
 from core.pixel_font import draw_text
 from core.rig import draw_rig
 from core.window import handle_key
-from core.backdrop import Backdrop
 from core.records import RoundRecord
 from core.ui import Button, DwellClickController, draw_panel, draw_record
 
@@ -79,14 +78,13 @@ ARROW_NOCK_FRAC = (0.08, 0.5)
 ARROW_TIP_FRAC = (0.90, 0.5)
 ARROW_CENTER_FRAC = (0.5, 0.5)
 
-# The string is a thin line over the camera picture, so its colour is picked
-# by what is right behind it: light over a dark patch of room, dark over a
-# bright one. Eased faster than Pong's ball, because the bow moves with the
-# hand and what is behind it changes with every step.
-STRING_LIGHT = (235, 235, 235)
-STRING_DARK = (15, 15, 15)
-STRING_SMOOTHING = 0.2
-STRING_THICKNESS = 3
+# The string shows how hard the bow is drawn: green slack, through yellow, to
+# red at full draw -- by way of yellow, because a straight blend of green and
+# red is mud in the middle. A dark edge under it keeps it readable over any
+# room the camera happens to see.
+STRING_COLORS = ((60, 210, 60), (40, 220, 245), (50, 50, 235))   # BGR
+STRING_THICKNESS = 4
+STRING_EDGE = (25, 25, 25)
 
 MIN_SPEED = 520
 MAX_SPEED = 1650
@@ -116,6 +114,13 @@ TARGET_MARGIN = 130
 
 def _palm(hand):
     return hand.landmarks_px[9]
+
+
+def _string_color(power):
+    """Green at no draw, yellow halfway, red at full draw."""
+    low, mid, high = STRING_COLORS
+    a, b, t = (low, mid, power * 2) if power < 0.5 else (mid, high, power * 2 - 1)
+    return tuple(int(x + (y - x) * t) for x, y in zip(a, b))
 
 
 def _dist(a, b):
@@ -202,7 +207,6 @@ def run_archery_mode(cap, window_name, tracker):
     foul_gap = int(FOUL_GAP_FRAC * w)
 
     bow_is_left = True
-    string_backdrop = Backdrop(STRING_SMOOTHING)
     holding_arrow = False   # draw hand is closed -> an arrow exists in it
     nocked = False          # that arrow has snapped onto the bowstring
     pending_shot = None     # (bow_pt, draw_pt, pull_dist, angle) while nocked
@@ -388,20 +392,21 @@ def run_archery_mode(cap, window_name, tracker):
             tip_a = (int(bow_pt[0] + perp[0] * half_span), int(bow_pt[1] + perp[1] * half_span))
             tip_b = (int(bow_pt[0] - perp[0] * half_span), int(bow_pt[1] - perp[1] * half_span))
 
-            # read what is behind the string before the bow is drawn over it
-            string_at = [tip_a, tip_b] + ([draw_pt] if nocked and draw_pt is not None else [])
-            xs, ys = [p[0] for p in string_at], [p[1] for p in string_at]
-            dark = string_backdrop.measure(
-                frame, (min(xs) - 20, min(ys) - 20, max(xs) + 20, max(ys) + 20), step=4)
-            string_color = STRING_LIGHT if dark else STRING_DARK
-
             place_rotated(frame, bow_img, bow_pt, shoot_angle, bow_size, pivot=BOW_GRIP_FRAC)
 
             if nocked and draw_pt is not None:
-                cv2.line(frame, tip_a, draw_pt, string_color, STRING_THICKNESS, cv2.LINE_AA)
-                cv2.line(frame, draw_pt, tip_b, string_color, STRING_THICKNESS, cv2.LINE_AA)
+                # the same reckoning the shot will use when it is let go
+                pull = _dist(bow_pt, draw_pt)
+                draw_power = min(max((pull - min_pull) / max(max_pull - min_pull, 1.0), 0.0), 1.0)
+                string = [tip_a, draw_pt, tip_b]
             else:
-                cv2.line(frame, tip_a, tip_b, string_color, STRING_THICKNESS, cv2.LINE_AA)
+                draw_power = 0.0
+                string = [tip_a, tip_b]
+            color = _string_color(draw_power)
+            for a, b in zip(string, string[1:]):
+                cv2.line(frame, a, b, STRING_EDGE, STRING_THICKNESS + 3, cv2.LINE_AA)
+            for a, b in zip(string, string[1:]):
+                cv2.line(frame, a, b, color, STRING_THICKNESS, cv2.LINE_AA)
 
             if now < nock_flash_until:
                 cv2.circle(frame, bow_pt, int(snap_radius * 0.5), (0, 255, 120), 2, cv2.LINE_AA)
