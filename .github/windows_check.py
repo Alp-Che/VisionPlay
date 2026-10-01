@@ -168,7 +168,7 @@ def main():
     if failed:
         print(f"{len(failed)} HATA: " + ", ".join(failed))
         sys.exit(1)
-    print("Windows'ta her sey calisti.")
+    print("Oyun bu bilgisayarda sorunsuz calisti.")
 
 
 if __name__ == "__main__":
