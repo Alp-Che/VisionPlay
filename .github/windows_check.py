@@ -26,7 +26,8 @@ FRAMES = 400
 for name in ("namedWindow", "destroyAllWindows", "destroyWindow", "imshow",
              "setWindowProperty", "setMouseCallback"):
     setattr(cv2, name, lambda *a, **k: None)
-cv2.getWindowProperty = lambda *a, **k: 0.0
+# the window counts as open: a closed one is how the player quits
+cv2.getWindowProperty = lambda name, prop: 1.0 if prop == cv2.WND_PROP_VISIBLE else 0.0
 _frames = [0]
 
 

@@ -7,7 +7,7 @@ from core import assets, records, settings
 from core.pixel_font import draw_text
 from core.transform import integer_scale_for
 from core.rig import rig_on, set_rig
-from core.window import handle_key, set_fullscreen
+from core.window import wait_key, set_fullscreen
 from core.ui import Button, DwellClickController, draw_panel
 
 # Wiping the records cannot be undone, so it asks first: the button turns red
@@ -84,8 +84,7 @@ def run_start(cap, window_name, tracker):
                        (0, 255, 0) if hand.closed else (0, 200, 255), -1)
 
         cv2.imshow(window_name, frame)
-        key = cv2.waitKey(1) & 0xFF
-        handle_key(window_name, key)
+        key = wait_key(window_name)
         if key == ord('q'):
             result = "quit"
         elif clicked == "test":

@@ -4,7 +4,7 @@ import cv2
 from core import assets
 from core.pixel_font import draw_text
 from core.transform import integer_scale_for
-from core.window import handle_key
+from core.window import wait_key
 from core.ui import Button, DwellClickController
 
 
@@ -83,8 +83,7 @@ def run_menu(cap, window_name, tracker):
                            (0, 255, 0) if hand.closed else (0, 200, 255), -1)
 
         cv2.imshow(window_name, frame)
-        key = cv2.waitKey(1) & 0xFF
-        handle_key(window_name, key)
+        key = wait_key(window_name)
         if key == ord('q'):
             result = "quit"
         elif clicked:

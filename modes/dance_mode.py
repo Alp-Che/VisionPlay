@@ -25,7 +25,7 @@ import numpy as np
 from core.records import RoundRecord
 from core.rig import draw_rig
 from core.ui import Button, DwellClickController, draw_panel, draw_record, draw_round_timer
-from core.window import handle_key
+from core.window import wait_key
 
 TOOLBAR_H = 90
 
@@ -201,8 +201,7 @@ def run_dance_mode(cap, window_name, tracker):
 
         draw_rig(frame, hands)
         cv2.imshow(window_name, frame)
-        key = cv2.waitKey(1) & 0xFF
-        handle_key(window_name, key)
+        key = wait_key(window_name)
         if key == ord('q'):
             result = "quit"
         elif key == 27:

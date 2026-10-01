@@ -24,7 +24,7 @@ from core.hand_tracker import hand_span
 from core.transform import integer_scale_for, place_rotated
 from core.pixel_font import draw_text
 from core.rig import draw_rig
-from core.window import handle_key
+from core.window import wait_key
 from core.records import RoundRecord
 from core.ui import Button, DwellClickController, draw_panel, draw_record
 
@@ -456,8 +456,7 @@ def run_archery_mode(cap, window_name, tracker):
 
 
         cv2.imshow(window_name, frame)
-        key = cv2.waitKey(1) & 0xFF
-        handle_key(window_name, key)
+        key = wait_key(window_name)
         if key == ord('q'):
             result = "quit"
         elif key == 27:
