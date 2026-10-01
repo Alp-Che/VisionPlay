@@ -52,7 +52,7 @@ MAX_PULL_PER_HAND = 4.2
 DEFAULT_HAND_PX = 45.0
 HAND_SMOOTHING = 0.12  # per-frame blend, keeps the draw length steady
 
-ARROWS_PER_ROUND = 7
+ARROWS_PER_ROUND = 5
 
 # A foul line between archer and target. Reach past it and the bow won't
 # form, so there's no creeping up on the target for an easy ten. Measured as

@@ -12,7 +12,7 @@ Butun arayuz el ile kullaniliyor: bir butonun uzerine parmak ucunuzu getirip
 |---|---|
 | **OKCULUK** | Bir el yayi tutar, diger el yumruk yapinca ok olusur; oku yaya yaklastirip geri cekin ve birakin. Hedef asagi yukari hareket eder. |
 | **CIZIM** | Bir elin isaret parmagi kalemdir, diger el yumruk yapinca cizer. YON DEGISTIR iki elin gorevini degistirir. |
-| **FRUIT NINJA** | Iki isaret parmaginizla meyveleri kesin, bombalara dokunmayin. Ust uste kestikce kombo buyur; saat kesince sure kazanirsiniz. |
+| **FRUIT NINJA** | Iki isaret parmaginizla meyveleri kesin, bombalara dokunmayin. Ust uste kestikce kombo buyur; saat kesince sure kazanirsiniz. Sol alttaki COK OYUNCULU dugmesiyle ekrandaki butun eller birlikte oynar (ayri rekor). |
 | **TOP SEKTIRME** | Topu elinizle havada tutun, yere dusurmeyin. |
 | **KOSTEBEK** | Alttan cikan kostebekleri elinizle geri sokun, kotu olanlara vurmayin. |
 | **PONG** | Iki kisilik. Herkes kendi tarafindaki raketi eliyle surer; 3 sayiya ulasan kazanir. |

@@ -18,6 +18,7 @@ import cv2
 import numpy as np
 
 from core import assets
+from core.hand_tracker import EVERYONE_HANDS
 from core.paddles import HandPaddles
 from core.pixel_font import draw_text
 from core.rig import draw_rig
@@ -44,7 +45,7 @@ MIN_SWIPE_FRAC = 0.30     # of frame height per second
 
 # Longer than the shared round: a fruit has to be thrown, rise and fall before
 # it can be cut, so the same twenty seconds buys fewer chances here.
-ROUND_SECONDS = 30.0
+ROUND_SECONDS = 25.0
 
 GRAVITY = 900.0           # px/s^2
 SPAWN_EVERY = (0.7, 1.6)  # seconds between throws
@@ -333,6 +334,10 @@ def run_ninja_mode(cap, window_name, tracker):
     # exactly when a hand is swung hardest, and a cut already under way should
     # carry through rather than stop dead.
     finger_tracker = HandPaddles(1.0, 1.0, landmark=8)
+    # Everyone in front of the camera cuts at once, for a crowd: every hand in
+    # view plays, sharing one score. It has its own record -- a room full of
+    # hands would otherwise put the one-player record out of reach for good.
+    multi = False
 
     ret, frame = cap.read()
     if not ret:
@@ -342,6 +347,8 @@ def run_ninja_mode(cap, window_name, tracker):
     buttons = [
         Button("menu", "MENÜ", 10, 10, 100, TOOLBAR_H - 20, color=(38, 38, 38)),
         Button("restart", "YENİDEN", 120, 10, 150, TOOLBAR_H - 20, color=(26, 46, 30)),
+        # bottom left: the top bar has no room for it once the timer is in
+        Button("multi", "ÇOK OYUNCULU", 10, h - 80, 260, 70, color=(52, 36, 26)),
     ]
 
     fruits, halves = [], []
@@ -366,9 +373,15 @@ def run_ninja_mode(cap, window_name, tracker):
         dt = min(now - last_time, 0.05)
         last_time = now
 
-        hands = tracker.process(frame)
+        hands = tracker.process(frame, everyone=multi)
 
         clicked, progress_map = dwell.update(hands, buttons)
+        if clicked == "multi":
+            multi = not multi
+            record = RoundRecord("ninja_cok" if multi else "ninja")
+            finger_tracker = HandPaddles(1.0, 1.0, landmark=8,
+                                         max_hands=EVERYONE_HANDS if multi else 2)
+            clicked = "restart"          # a fresh round in the new mode
         if clicked == "menu":
             result = "menu"
             break
@@ -514,7 +527,8 @@ def run_ninja_mode(cap, window_name, tracker):
 
         for btn in buttons:
             btn.draw(frame, progress=progress_map.get(btn.id, 0.0),
-                     hovered=dwell.hovered_id() == btn.id)
+                     hovered=dwell.hovered_id() == btn.id,
+                     selected=btn.id == "multi" and multi)
 
         draw_panel(frame, f"SKOR: {score}", (w // 2, 26), scale=3,
                                   anchor="center")

@@ -59,7 +59,7 @@ class FakeTracker:
         self.pos = [[400.0, 400.0], [880.0, 400.0]]
         self.vel = [[0.0, 0.0], [0.0, 0.0]]
 
-    def process(self, frame):
+    def process(self, frame, everyone=False):
         hands = []
         for i in range(2):
             if self.rng.random() < 0.10:
@@ -73,7 +73,7 @@ class FakeTracker:
 
 
 class NoHands:
-    def process(self, frame):
+    def process(self, frame, everyone=False):
         return []
 
 
@@ -117,6 +117,7 @@ def main():
         from core.hand_tracker import HandTracker
         t = HandTracker(num_hands=2)
         found = t.process(np.zeros((H, W, 3), np.uint8))
+        found += t.process(np.zeros((H, W, 3), np.uint8), everyone=True)
         t.close()
         return f"bos karede {len(found)} el"
 

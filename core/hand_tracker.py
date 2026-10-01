@@ -74,6 +74,10 @@ FOLLOW_GRACE_FRAMES = 20
 # running before it is allowed to take the controls.
 MIN_HAND_FRAC = 0.05         # of frame height
 CLAIM_FRAMES = 4
+# Everyone at once, for a game played as a party: this many hands are looked
+# for, and all of them play. The rules against a hand found in the wallpaper
+# still hold -- too small, or not there frame after frame, and it is ignored.
+EVERYONE_HANDS = 8
 
 
 def _apparent_size(hand):
@@ -192,18 +196,28 @@ class HandTracker:
         # cannot open a path with non-ASCII letters in it on Windows, and a
         # Turkish user name or a OneDrive "Masaüstü" puts them there.
         with open(model_path or resource("models", "hand_landmarker.task"), "rb") as f:
-            model = f.read()
+            self._model = f.read()
+        self._confidence = (min_detection, min_tracking)
+        self._landmarker = self._make_landmarker(
+            look_for if look_for is not None else num_hands + 2)
+        # How many hands the model looks for is fixed when it is made, so
+        # "everyone plays" needs a second one. It is made the first time it is
+        # asked for -- games that never use it never pay for it.
+        self._everyone = None
+        self._t0 = time.monotonic()
+        self._last_ts = -1
+
+    def _make_landmarker(self, num_hands):
+        min_detection, min_tracking = self._confidence
         options = vision.HandLandmarkerOptions(
-            base_options=BaseOptions(model_asset_buffer=model),
+            base_options=BaseOptions(model_asset_buffer=self._model),
             running_mode=vision.RunningMode.VIDEO,
-            num_hands=look_for if look_for is not None else num_hands + 2,
+            num_hands=num_hands,
             min_hand_detection_confidence=min_detection,
             min_hand_presence_confidence=min_tracking,
             min_tracking_confidence=min_tracking,
         )
-        self._landmarker = vision.HandLandmarker.create_from_options(options)
-        self._t0 = time.monotonic()
-        self._last_ts = -1
+        return vision.HandLandmarker.create_from_options(options)
 
     def _next_timestamp_ms(self):
         ts = int((time.monotonic() - self._t0) * 1000)
@@ -212,7 +226,15 @@ class HandTracker:
         self._last_ts = ts
         return ts
 
-    def process(self, frame_bgr):
+    def process(self, frame_bgr, everyone=False):
+        """The player's hands -- or, with `everyone`, every hand in view."""
+        if everyone:
+            if self._everyone is None:
+                self._everyone = (self._make_landmarker(EVERYONE_HANDS),
+                                  _PlayerHands(EVERYONE_HANDS))
+            landmarker, players = self._everyone
+        else:
+            landmarker, players = self._landmarker, self._players
         source, shift = frame_bgr, 0
         view = self._view
         if (view is not None and view.full is not None
@@ -224,7 +246,7 @@ class HandTracker:
         timestamp = self._next_timestamp_ms()
         # a stalled frame must not widen the search into the next person
         dt = min((timestamp - previous_ts) / 1000.0, 0.1) if previous_ts >= 0 else 1 / 60.0
-        result = self._landmarker.detect_for_video(mp_image, timestamp)
+        result = landmarker.detect_for_video(mp_image, timestamp)
 
         h, w = source.shape[:2]
         hands = []
@@ -236,7 +258,9 @@ class HandTracker:
             if result.hand_world_landmarks and i < len(result.hand_world_landmarks):
                 world = result.hand_world_landmarks[i]
             hands.append(TrackedHand(label, lm_list, w, h, world, shift_x=shift))
-        return self._players.pick(hands, dt, h)
+        return players.pick(hands, dt, h)
 
     def close(self):
         self._landmarker.close()
+        if self._everyone is not None:
+            self._everyone[0].close()
