@@ -1,0 +1,78 @@
+# Builds the Windows installer, VisionPlay-Kurulum.exe, on every push to main.
+#
+# It is under the run's "Artifacts" as VisionPlay-Kurulum. Pushing a tag such
+# as v1.0 also attaches it to a GitHub release, which gives it a permanent
+# download link. PyInstaller cannot build for Windows on another system, which
+# is why this runs on GitHub's Windows machines.
+name: Windows
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write          # only used to attach the installer to a release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Kurulum
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller==6.22.3
+          python setup_models.py
+
+      # fails the build if any screen raises, before anything is packaged
+      - name: Oyun Windows'ta calisiyor mu
+        run: python .github/windows_check.py
+
+      - name: VisionPlay.exe
+        run: python -m PyInstaller VisionPlay.spec --noconfirm --clean
+
+      - name: Kurulum dosyasi (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          & $iscc "/DAppVersion=1.0.${{ github.run_number }}" installer\VisionPlay.iss
+          if ($LASTEXITCODE) { throw "Inno Setup basarisiz" }
+
+      # The installer, installed for real and silently, then the installed game
+      # started. There is no camera here, so it should come up, say it could
+      # not open one, and exit with 1. Something left out of the package dies
+      # on import instead, or hangs behind an error box -- either fails this.
+      - name: Kurulum dosyasi calisiyor mu
+        shell: pwsh
+        run: |
+          $setup = Start-Process -FilePath dist\installer\VisionPlay-Kurulum.exe `
+            -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -PassThru -Wait
+          if ($setup.ExitCode -ne 0) { throw "kurulum basarisiz: $($setup.ExitCode)" }
+          $exe = "$env:LOCALAPPDATA\Programs\VisionPlay\VisionPlay.exe"
+          if (-not (Test-Path $exe)) { throw "kurulumdan sonra VisionPlay.exe yok" }
+          $game = Start-Process -FilePath $exe -PassThru
+          $null = $game.Handle
+          if (-not $game.WaitForExit(180000)) { $game.Kill(); throw "VisionPlay.exe 3 dakikada kapanmadi" }
+          if ($game.ExitCode -ne 1) { throw "VisionPlay.exe beklenmeyen kodla kapandi: $($game.ExitCode)" }
+          Write-Host "Kurulum calisti; kurulan oyun acildi, kamera olmadigini gosterip kapandi."
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VisionPlay-Kurulum
+          path: dist/installer/VisionPlay-Kurulum.exe
+          retention-days: 90
+
+      - name: Surume ekle
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/installer/VisionPlay-Kurulum.exe

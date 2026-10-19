@@ -20,20 +20,21 @@ Butun arayuz el ile kullaniliyor: bir butonun uzerine parmak ucunuzu getirip
 
 Oyun bitince rekorunuz da gosterilir (TOP SEKTIRME icin en uzun seri, sag ustte). Baslangic ekranindaki REKOR SIFIRLA dugmesi (onay icin iki kez basilir) hepsini siler. Rekorlar bilgisayarda saklanir (macOS: `~/Library/Application Support/VisionPlay`, Windows: `%APPDATA%\VisionPlay`).
 
-## Windows: hazir surum (Python gerekmez)
+## Windows: kurulum dosyasi (Python gerekmez)
 
-`main`'e her push'ta GitHub, Windows icin `VisionPlay.exe`'yi kendisi derler
-ve once oyunun Windows'ta calistigini test eder.
+`main`'e her push'ta GitHub, Windows icin **VisionPlay-Kurulum.exe**'yi kendisi
+derler; once oyunu Windows'ta test eder, sonra kurulum dosyasini sessizce kurup
+kurulan oyunun acildigini dener.
 
 1. Depo sayfasinda **Actions** sekmesine gecin, soldan **Windows**'u secin.
-2. En ustteki yesil tikli calismaya girin; sayfanin altindaki **Artifacts**
-   bolumunden **VisionPlay-Windows**'u indirin (GitHub'a giris yapmis olmak
-   gerekir).
-3. Zip'i bir klasore cikarin ve `VisionPlay.exe`'yi calistirin. Yanindaki
-   `_internal` klasoru yerinde kalmali.
+2. En ustteki yesil tikli calismaya girin; altta **Artifacts** bolumunden
+   **VisionPlay-Kurulum**'u indirin (GitHub'a giris yapmis olmak gerekir) ve
+   zip'ten cikan `VisionPlay-Kurulum.exe`'yi calistirin.
+3. Kurulum Turkce'dir, yonetici izni istemez; Baslat menusune ve istenirse
+   masaustune kisayol ekler. Kaldirmak icin: Ayarlar > Uygulamalar > VisionPlay.
 
 Imzasiz programlarda Windows "bilgisayarinizi korudu" uyarisi verir:
-**Ek bilgi > Yine de calistir**. Yeni surum icin ayni yerden tekrar indirin.
+**Ek bilgi > Yine de calistir**. Rekorlar kaldirma sirasinda silinmez.
 
 ## Kaynaktan kurulum
 

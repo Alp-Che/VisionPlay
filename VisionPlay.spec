@@ -3,7 +3,8 @@
 #   macOS:   source venv/bin/activate && pyinstaller VisionPlay.spec --noconfirm
 #            -> dist/VisionPlay.app
 #   Windows: built by .github/workflows/windows.yml on every push
-#            -> dist/VisionPlay/VisionPlay.exe (the whole folder is needed)
+#            -> dist/VisionPlay/VisionPlay.exe (the whole folder is needed),
+#            then wrapped by installer/VisionPlay.iss into VisionPlay-Kurulum.exe
 #
 # PyInstaller cannot build for one system on another, which is why the
 # Windows build runs on GitHub's Windows machines rather than here.
